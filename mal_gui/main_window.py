@@ -412,6 +412,12 @@ class MainWindow(QMainWindow):
         self.delete_action.triggered.connect(
             lambda: self.scene.delete_assets(scene.selectedItems()))
 
+        drag_icon = image_path("drag.png")
+        self.hand_drag_action = QAction(QIcon(drag_icon),"Drag", self)
+        self.hand_drag_action.setCheckable(True)
+        self.hand_drag_action.setToolTip("Toggle drag-to-pan the view")
+        self.hand_drag_action.toggled.connect(self.toggle_hand_drag)
+
     def create_menu_bar(self):
         """Create the menu and add to the GUI"""
         menu_bar = self.menuBar()
@@ -473,6 +479,7 @@ class MainWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        toolbar.addAction(self.hand_drag_action)
         toolbar.addAction(self.zoom_in_action)
         toolbar.addAction(self.zoom_out_action)
         self.zoom_label = QLabel("100%")
@@ -532,6 +539,10 @@ class MainWindow(QMainWindow):
         """Set zoom label to match current zoom factor"""
         zoomValue = int(self.zoom_line_edit.text())
         self.view.set_zoom(zoomValue)
+
+    def toggle_hand_drag(self, checked: bool):
+        """Enable or disable drag-to-pan in the view."""
+        self.view.set_hand_drag_enabled(checked)
 
     def update_zoom_label(self):
         """Set zoom label to match current zoom factor"""
