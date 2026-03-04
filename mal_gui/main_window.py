@@ -425,15 +425,22 @@ class MainWindow(QMainWindow):
         self.file_menu = menu_bar.addMenu("&File")
         self.file_menu_new_action = self.file_menu.addAction("New")
         self.file_menu_open_action = self.file_menu.addAction("Load Model/Scenario")
+        self.file_menu_quick_load_action = self.file_menu.addAction("Quick Load")
+        self.file_menu_save_action = self.file_menu.addAction("Save Current File")
         self.file_menu_save_as_action = self.file_menu.addAction("Export Model..")
         self.file_menu_export_scenario_action = self.file_menu.addAction("Export Scenario..")
         self.file_menu_save_as_drawio = self.file_menu.addAction("Export draw.io file..")
         self.file_menu_quit_action = self.file_menu.addAction("Quit")
         self.file_menu_open_action.triggered.connect(self.load_model_or_scenario)
+        self.file_menu_save_action.setShortcut("Ctrl+s")
+        self.file_menu_quick_load_action.setShortcut("Ctrl+l")
+        self.file_menu_quick_load_action.triggered.connect(self.quick_load_current_file)
+        self.file_menu_save_action.triggered.connect(self.save_scenario)
         self.file_menu_save_as_action.triggered.connect(self.save_as_model)
         self.file_menu_export_scenario_action.triggered.connect(self.save_as_scenario)
         self.file_menu_save_as_drawio.triggered.connect(self.save_as_drawio)
         self.file_menu_quit_action.triggered.connect(self.quitApp)
+        self.update_scenario_save_action_state()
 
         self.edit_menu = menu_bar.addMenu("Edit")
         self.edit_menu_undo_action = self.edit_menu.addAction(self.undo_action)
@@ -582,22 +589,63 @@ class MainWindow(QMainWindow):
             print("User cancelled 'Load'")
             return
 
+    def quick_load_current_file(self):
+        """Reload currently loaded model or scenario from file."""
+        file_path = self.scenario_file_name or self.model_file_name
+        if not file_path:
+            self.show_error_popup("No loaded file to quick load")
+            return
+
+        quick_load_user_confirmation = QMessageBox.question(
+            self,
+            "Quick Load",
+            "Quick Load will discard current unsaved changes. "
+            "Do you want to continue?",
+            QMessageBox.Ok | QMessageBox.Cancel
+        )
+
+        if quick_load_user_confirmation != QMessageBox.Ok:
+            return
+
+        self.scene.clear()
+        try:
+            if self.scenario_file_name:
+                self.load_scenario(file_path)
+                print(f"Quick loaded scenario from {file_path}")
+            else:
+                self.load_model(file_path)
+                print(f"Quick loaded model from {file_path}")
+        except Exception as e:
+            self.show_error_popup(f"Could not quick load file: {e}")
+
 
     def load_scenario(self, file_path: str):
         """Load model and agents from a scenario"""
         scenario = Scenario.load_from_file(file_path)
         # Reload in case language was changed
         self.load_scene(scenario._lang_file, scenario.model, scenario)
+        self.model_file_name = None
         self.scenario_file_name = file_path
         self._lang_file = yaml.safe_load(open(file_path, "r"))["lang_file"]
+        self.update_scenario_save_action_state()
 
     def load_model(self, file_path: str):
         """Load a MAL model from a file"""
-
+        self.scenario_file_name = None
         self.model_file_name = file_path
         self.scene.model = Model.load_from_file(
             file_path, self.scene.lang_graph
         )
+        self.update_scenario_save_action_state()
+
+    def update_scenario_save_action_state(self):
+        """Enable save action only when a loaded scenario file is available."""
+        if hasattr(self, "file_menu_save_action"):
+            self.file_menu_save_action.setEnabled(bool(self.scenario_file_name))
+        if hasattr(self, "file_menu_quick_load_action"):
+            self.file_menu_quick_load_action.setEnabled(
+                bool(self.scenario_file_name or self.model_file_name)
+            )
 
     def add_positions_to_model(self):
         """Add x/y positions to asset extras of model"""
@@ -684,6 +732,13 @@ class MainWindow(QMainWindow):
                 self.model_file_name = None
                 return
 
+    def save_scenario(self):
+        """Save loaded scenario back to its current file."""
+        if not self.scenario_file_name:
+            self.show_error_popup("No loaded scenario file to save")
+            return
+        self._save_scenario_to_file(self.scenario_file_name)
+
     def save_as_scenario(self):
         """ `Save as`. Let user select target file and save scenario."""
         file_dialog = QFileDialog()
@@ -695,7 +750,10 @@ class MainWindow(QMainWindow):
             print("No valid path detected for saving")
             self.show_error_popup("No valid path detected for saving")
             return
+        self._save_scenario_to_file(file_path)
 
+    def _save_scenario_to_file(self, file_path: str):
+        """Save scenario data to the provided path."""
         agents = self.scene.scenario.agent_settings if self.scene.scenario else {}
         # Add attacker agents from scene
         for attacker_item in self.scene.attacker_items:
