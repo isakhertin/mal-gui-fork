@@ -15,9 +15,6 @@ class DeleteConnectionCommand(QUndoCommand):
 
     def redo(self):
         """Perform delete connection"""
-        self.connection.delete()
-        self.connection.remove_labels()
-
         if isinstance(self.connection, AssociationConnectionItem):
             self.scene.remove_association(self.connection)
         elif isinstance(self.connection, EntrypointConnectionItem):
@@ -42,11 +39,29 @@ class DeleteConnectionCommand(QUndoCommand):
                 self.connection.attacker_item,
                 self.connection.asset_item
             )
+            step_full_name = (
+                self.connection.asset_item.asset.name
+                + ":"
+                + self.connection.attack_step_name
+            )
+            if isinstance(self.connection.attacker_item.entry_points, set):
+                self.connection.attacker_item.entry_points.add(step_full_name)
+            elif step_full_name not in self.connection.attacker_item.entry_points:
+                self.connection.attacker_item.entry_points.append(step_full_name)
         elif isinstance(self.connection, GoalConnectionItem):
             self.connection = self.scene.add_goal_connection(
                 self.connection.attack_step_name,
                 self.connection.attacker_item,
                 self.connection.asset_item
             )
+            step_full_name = (
+                self.connection.asset_item.asset.name
+                + ":"
+                + self.connection.attack_step_name
+            )
+            if isinstance(self.connection.attacker_item.goals, set):
+                self.connection.attacker_item.goals.add(step_full_name)
+            elif step_full_name not in self.connection.attacker_item.goals:
+                self.connection.attacker_item.goals.append(step_full_name)
         else:
             raise ValueError("Unknown connection type")

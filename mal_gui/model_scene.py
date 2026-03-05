@@ -697,7 +697,10 @@ class ModelScene(QGraphicsScene):
         )
 
         print("Remove entrypoint", entrypoint_item.attack_step_name)
-        entrypoint_item.attacker_item.entry_points.remove(full_name)
+        try:
+            entrypoint_item.attacker_item.entry_points.remove(full_name)
+        except (ValueError, KeyError):
+            print("entrypoint connection already deleted")
         entrypoint_item.delete()
 
     def remove_goal(self, goal_item: GoalConnectionItem):
@@ -711,7 +714,7 @@ class ModelScene(QGraphicsScene):
         print("Remove goal", goal_item.attack_step_name)
         try:
             goal_item.attacker_item.goals.remove(full_name)
-        except:
+        except (ValueError, KeyError):
             print("goal connection already deleted")
 
         goal_item.delete()

@@ -17,8 +17,9 @@ class AttackerItem(ItemBase):
             parent=None,
         ):
 
-        self.entry_points: list[str] = entry_points or []
-        self.goals: list[str] = goals or []
+        # Scenario data may come in as sets; normalize to lists for GUI ops.
+        self.entry_points: list[str] = list(entry_points) if entry_points else []
+        self.goals: list[str] = list(goals) if goals else []
         self.name = name
         self.attacker_toggle_state = False
 
