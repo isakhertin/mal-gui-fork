@@ -122,8 +122,8 @@ class MainWindow(QMainWindow):
             lang_graph, self.asset_factory, model, scenario
         )
 
-        self.create_menu_bar()
         self.create_actions(self.scene)
+        self.create_menu_bar()
         self.toolbar = self.create_toolbar()
         self.addToolBar(self.toolbar)
         self.dock_widgets = self.create_side_panels(self.asset_factory)
@@ -415,6 +415,7 @@ class MainWindow(QMainWindow):
         drag_icon = image_path("drag.png")
         self.hand_drag_action = QAction(QIcon(drag_icon),"Drag", self)
         self.hand_drag_action.setCheckable(True)
+        self.hand_drag_action.setShortcut("Ctrl+d")
         self.hand_drag_action.setToolTip("Toggle drag-to-pan the view")
         self.hand_drag_action.toggled.connect(self.toggle_hand_drag)
 
@@ -433,7 +434,6 @@ class MainWindow(QMainWindow):
         self.file_menu_quit_action = self.file_menu.addAction("Quit")
         self.file_menu_open_action.triggered.connect(self.load_model_or_scenario)
         self.file_menu_quit_action.setShortcut("Ctrl+q")
-        self.hand_drag_action.setShortcut("Ctrl+d")
         self.file_menu_save_action.setShortcut("Ctrl+s")
         self.file_menu_quick_load_action.setShortcut("Ctrl+l")
         self.file_menu_quick_load_action.triggered.connect(self.quick_load_current_file)
