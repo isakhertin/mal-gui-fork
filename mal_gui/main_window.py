@@ -432,6 +432,8 @@ class MainWindow(QMainWindow):
         self.file_menu_save_as_drawio = self.file_menu.addAction("Export draw.io file..")
         self.file_menu_quit_action = self.file_menu.addAction("Quit")
         self.file_menu_open_action.triggered.connect(self.load_model_or_scenario)
+        self.file_menu_quit_action.setShortcut("Ctrl+q")
+        self.hand_drag_action.setShortcut("Ctrl+d")
         self.file_menu_save_action.setShortcut("Ctrl+s")
         self.file_menu_quick_load_action.setShortcut("Ctrl+l")
         self.file_menu_quick_load_action.triggered.connect(self.quick_load_current_file)
@@ -827,6 +829,7 @@ class MainWindow(QMainWindow):
 
 
     def quitApp(self):
+        print("Quit")
         self.app.quit()
 
     def show_information_popup(self, message_text):
