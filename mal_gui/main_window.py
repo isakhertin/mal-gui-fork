@@ -114,9 +114,9 @@ class MainWindow(QMainWindow):
         ):
         """Load scene with given language and model"""
         print("LOADING SCENE!")
+        lang_graph = LanguageGraph.load_from_file(lang_file_path)
         self.clear_window()
         self.lang_file_path = lang_file_path
-        lang_graph = LanguageGraph.load_from_file(lang_file_path)
         self.asset_factory = self.create_asset_factory(lang_graph)
         self.scene = self.create_scene(
             lang_graph, self.asset_factory, model, scenario
@@ -426,7 +426,8 @@ class MainWindow(QMainWindow):
         self.file_menu = menu_bar.addMenu("&File")
         self.file_menu_new_action = self.file_menu.addAction("New")
         self.file_menu_open_action = self.file_menu.addAction("Load Model/Scenario")
-        self.file_menu_quick_load_action = self.file_menu.addAction("Reload model")
+        self.file_menu_quick_load_action = self.file_menu.addAction("Reload Current File")
+        self.file_menu_reload_project_action = self.file_menu.addAction("Reload Project")
         self.file_menu_save_action = self.file_menu.addAction("Save Current File")
         self.file_menu_save_as_action = self.file_menu.addAction("Export Model..")
         self.file_menu_export_scenario_action = self.file_menu.addAction("Export Scenario..")
@@ -436,7 +437,9 @@ class MainWindow(QMainWindow):
         self.file_menu_quit_action.setShortcut("Ctrl+q")
         self.file_menu_save_action.setShortcut("Ctrl+s")
         self.file_menu_quick_load_action.setShortcut("Ctrl+r")
+        self.file_menu_reload_project_action.setShortcut("Ctrl+Shift+r")
         self.file_menu_quick_load_action.triggered.connect(self.quick_load_current_file)
+        self.file_menu_reload_project_action.triggered.connect(self.reload_project_from_mal)
         self.file_menu_save_action.triggered.connect(self.save_scenario)
         self.file_menu_save_as_action.triggered.connect(self.save_as_model)
         self.file_menu_export_scenario_action.triggered.connect(self.save_as_scenario)
@@ -620,6 +623,64 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.show_error_popup(f"Could not quick load file: {e}")
 
+    def reload_project_from_mal(self):
+        """Reload the current MAL project and reopen the active file if possible."""
+        if not self.lang_file_path:
+            self.show_error_popup("No loaded MAL language file to reload")
+            return
+
+        quick_load_user_confirmation = QMessageBox.question(
+            self,
+            "Reload Project",
+            "Reloading the MAL project will discard current unsaved changes. "
+            "Do you want to continue?",
+            QMessageBox.Ok | QMessageBox.Cancel
+        )
+
+        if quick_load_user_confirmation != QMessageBox.Ok:
+            return
+
+        try:
+            self.reload_current_project()
+            print("Reloaded current project")
+        except Exception as e:
+            self.show_error_popup(f"Could not reload MAL language file: {e}")
+
+    def reload_current_project(self):
+        """Reload the current MAL file and reopen the current model/scenario."""
+        scenario_file_path = self.scenario_file_name
+        model_file_path = self.model_file_name
+
+        self.load_empty_project(self.lang_file_path)
+
+        if scenario_file_path:
+            try:
+                self.load_scenario(scenario_file_path)
+            except Exception as e:
+                self.show_error_popup(
+                    "Could not reload scenario file; opened empty project "
+                    f"instead: {e}"
+                )
+            return
+
+        if model_file_path:
+            try:
+                self.load_model(model_file_path)
+            except Exception as e:
+                self.show_error_popup(
+                    "Could not reload model file; opened empty project "
+                    f"instead: {e}"
+                )
+
+    def load_empty_project(self, lang_file_path: str):
+        """Reload the MAL language and reset the window to an empty project."""
+        lang_graph = LanguageGraph.load_from_file(lang_file_path)
+        self.load_scene(lang_file_path, Model("New Model", lang_graph))
+        self.model_file_name = None
+        self.scenario_file_name = None
+        if hasattr(self, "_lang_file"):
+            delattr(self, "_lang_file")
+        self.update_scenario_save_action_state()
 
     def load_scenario(self, file_path: str):
         """Load model and agents from a scenario"""
@@ -633,11 +694,12 @@ class MainWindow(QMainWindow):
 
     def load_model(self, file_path: str):
         """Load a MAL model from a file"""
+        model = Model.load_from_file(file_path, self.scene.lang_graph)
+        self.load_scene(self.lang_file_path, model)
         self.scenario_file_name = None
         self.model_file_name = file_path
-        self.scene.model = Model.load_from_file(
-            file_path, self.scene.lang_graph
-        )
+        if hasattr(self, "_lang_file"):
+            delattr(self, "_lang_file")
         self.update_scenario_save_action_state()
 
     def update_scenario_save_action_state(self):
@@ -648,6 +710,8 @@ class MainWindow(QMainWindow):
             self.file_menu_quick_load_action.setEnabled(
                 bool(self.scenario_file_name or self.model_file_name)
             )
+        if hasattr(self, "file_menu_reload_project_action"):
+            self.file_menu_reload_project_action.setEnabled(bool(self.lang_file_path))
 
     def add_positions_to_model(self):
         """Add x/y positions to asset extras of model"""

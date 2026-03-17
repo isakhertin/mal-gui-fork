@@ -1,6 +1,6 @@
 import pytest
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QToolBar
+from PySide6.QtWidgets import QApplication, QMainWindow, QToolBar, QMessageBox
 from PySide6.QtCore import Qt, QPointF
 
 from maltoolbox.language import LanguageGraph
@@ -114,6 +114,59 @@ def test_load_scene_recreates_components(app, lang_file_path):
 
     assert window.scene is not old_scene
     assert window.scene.model.name == "ReloadedModel"
+
+
+def test_load_model_recreates_scene(tmp_path, app, lang_file_path):
+    window = MainWindow(app, lang_file_path)
+
+    lang_graph = LanguageGraph.load_from_file(lang_file_path)
+    model = Model("SavedModel", lang_graph)
+    model_path = tmp_path / "saved-model.yml"
+    model.save_to_file(model_path)
+
+    old_scene = window.scene
+    window.load_model(str(model_path))
+
+    assert window.scene is not old_scene
+    assert window.scene.model.name == "SavedModel"
+    assert window.model_file_name == str(model_path)
+    assert window.scenario_file_name is None
+
+
+def test_quick_load_current_file_reloads_model(tmp_path, monkeypatch, app, lang_file_path):
+    window = MainWindow(app, lang_file_path)
+
+    lang_graph = LanguageGraph.load_from_file(lang_file_path)
+    model = Model("ReloadTarget", lang_graph)
+    model_path = tmp_path / "reload-model.yml"
+    model.save_to_file(model_path)
+    window.load_model(str(model_path))
+
+    reloaded_scene = window.scene
+    window.scene.model.name = "MutatedInMemory"
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Ok)
+
+    window.quick_load_current_file()
+
+    assert window.scene is not reloaded_scene
+    assert window.scene.model.name == "ReloadTarget"
+    assert window.model_file_name == str(model_path)
+
+
+def test_reload_project_from_mal_falls_back_to_empty_project(monkeypatch, main_window):
+    messages = []
+
+    main_window.scenario_file_name = "missing-scenario.yml"
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Ok)
+    monkeypatch.setattr(main_window, "show_error_popup", messages.append)
+
+    main_window.reload_project_from_mal()
+
+    assert main_window.scene.model.name == "New Model"
+    assert main_window.scenario_file_name is None
+    assert main_window.model_file_name is None
+    assert messages
+    assert "Could not reload scenario file" in messages[0]
 
 
 # -------------------------------------------------------------------
