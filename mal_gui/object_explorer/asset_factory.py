@@ -4,6 +4,7 @@ from collections import namedtuple
 
 from PySide6.QtCore import QPointF
 
+from ..detectors import DetectorIndex
 from .asset_item import AssetItem
 from .attacker_item import AttackerItem
 
@@ -16,8 +17,9 @@ AssetInfo = namedtuple(
 
 
 class AssetFactory():
-    def __init__(self, parent=None):
+    def __init__(self, detector_index: DetectorIndex | None = None, parent=None):
         self.asset_registry: dict[str, list[AssetInfo]] = {}
+        self.detector_index = detector_index or DetectorIndex()
 
     def add_key_value_to_asset_registry(self, key, value):
         if key not in self.asset_registry:
@@ -40,7 +42,11 @@ class AssetFactory():
     ):
         asset_type = asset.lg_asset.name
         asset_info: AssetInfo = self.asset_registry[asset_type][0]
-        requested_item = AssetItem(asset, asset_info.asset_image)
+        requested_item = AssetItem(
+            asset,
+            asset_info.asset_image,
+            has_detector=self.detector_index.has_detector(asset_type)
+        )
 
         requested_item.setPos(pos)
         requested_item.type_text_item.setPlainText(asset.name)

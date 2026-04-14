@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, QPointF
 from maltoolbox.language import LanguageGraph
 from maltoolbox.model import Model
 
+from mal_gui.detectors import DetectorIndex
 from mal_gui.main_window import MainWindow
 from mal_gui.model_scene import ModelScene
 
@@ -199,6 +200,28 @@ def test_add_asset_updates_scene(main_window):
     asset = scene.create_asset("Application", pos, name="App1")
 
     assert asset in scene.items()
+
+
+def test_asset_factory_marks_assets_with_detectors(main_window):
+    main_window.detector_index = DetectorIndex(asset_types={"Application"})
+    main_window.asset_factory.detector_index = main_window.detector_index
+
+    application_asset = main_window.scene.create_asset(
+        "Application", QPointF(80, 80), name="App2"
+    )
+
+    assert application_asset.has_detector is True
+
+
+def test_asset_factory_does_not_mark_assets_without_detectors(main_window):
+    main_window.detector_index = DetectorIndex(asset_types={"Application"})
+    main_window.asset_factory.detector_index = main_window.detector_index
+
+    credentials_asset = main_window.scene.create_asset(
+        "Credentials", QPointF(120, 120), name="Creds1"
+    )
+
+    assert credentials_asset.has_detector is False
 
 
 # -------------------------------------------------------------------

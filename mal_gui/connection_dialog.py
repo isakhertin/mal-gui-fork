@@ -138,7 +138,6 @@ class EntrypointConnectionDialog(ConnectionDialog):
         self.setMinimumWidth(300)
 
         self.attack_step_list_widget = QListWidget()
-
         if asset_item.asset is not None:
             asset_type = self.lang_graph.assets[asset_item.asset.type]
 
@@ -211,7 +210,6 @@ class GoalConnectionDialog(ConnectionDialog):
         self.setMinimumWidth(300)
 
         self.attack_step_list_widget = QListWidget()
-
         if asset_item.asset is not None:
             asset_type = self.lang_graph.assets[asset_item.asset.type]
 

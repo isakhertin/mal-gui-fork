@@ -38,6 +38,7 @@ from .file_utils import image_path
 from .model_scene import ModelScene
 from .model_view import ModelView
 from .object_explorer import AssetItem, AssetFactory
+from .detectors import load_detector_index
 from .assets_container.assets_container import AssetsContainer
 from .connection_item import AssociationConnectionItem
 from .docked_windows import (
@@ -79,6 +80,7 @@ class MainWindow(QMainWindow):
 
         self.lang_file_path = lang_file_path
         lang_graph = LanguageGraph.load_from_file(lang_file_path)
+        self.detector_index = load_detector_index(lang_file_path)
         self.asset_factory = self.create_asset_factory(lang_graph)
         self.scene = self.create_scene(
             lang_graph, self.asset_factory, Model("New Model", lang_graph)
@@ -118,6 +120,7 @@ class MainWindow(QMainWindow):
         lang_graph = LanguageGraph.load_from_file(lang_file_path)
         self.clear_window()
         self.lang_file_path = lang_file_path
+        self.detector_index = load_detector_index(lang_file_path)
         self.asset_factory = self.create_asset_factory(lang_graph)
         self.scene = self.create_scene(
             lang_graph, self.asset_factory, model, scenario
@@ -154,7 +157,7 @@ class MainWindow(QMainWindow):
 
         # Create a registry as a dictionary containing
         # name as key and class as value
-        asset_factory = AssetFactory()
+        asset_factory = AssetFactory(detector_index=self.detector_index)
         asset_factory.register_asset(
             "Attacker", image_path("attacker.png")
         )
@@ -344,11 +347,19 @@ class MainWindow(QMainWindow):
         else:
             self.properties_table.currentItem = None
 
-    def update_attack_steps_window(self, attacker_asset_item: AttackerItem):
-        if attacker_asset_item is not None:
+    def update_attack_steps_window(self, selected_item: AttackerItem | AssetItem | None):
+        if isinstance(selected_item, AttackerItem):
             self.attack_steps_docked_window.clear()
-            for attack_step_name in attacker_asset_item.entry_points:
+            for attack_step_name in selected_item.entry_points:
                 self.attack_steps_docked_window.addItem(attack_step_name)
+            return
+
+        if isinstance(selected_item, AssetItem):
+            self.attack_steps_docked_window.clear()
+            for attack_step in selected_item.asset.lg_asset.attack_steps.values():
+                self.attack_steps_docked_window.addItem(attack_step.name)
+            return
+
         else:
             self.attack_steps_docked_window.clear()
 

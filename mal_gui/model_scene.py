@@ -1020,7 +1020,7 @@ class ModelScene(QGraphicsScene):
             if isinstance(item, AssetItem):
                 print("Asset selected")
                 self.main_window.update_properties_window(item)
-                self.main_window.update_attack_steps_window(None)
+                self.main_window.update_attack_steps_window(item)
                 self.main_window.update_asset_relations_window(item)
             elif isinstance(item, AttackerItem):
                 print("Attacker Selected")
