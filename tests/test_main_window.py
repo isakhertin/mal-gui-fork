@@ -22,6 +22,7 @@ def main_window(app, lang_file_path):
 # Initialization
 # -------------------------------------------------------------------
 
+
 def test_main_window_initialization(main_window):
     assert isinstance(main_window, QMainWindow)
     assert main_window.windowTitle() == "MAL GUI"
@@ -47,9 +48,12 @@ def test_scene_is_model_scene(main_window):
 # Menu & Actions
 # -------------------------------------------------------------------
 
+
 def test_menu_bar_created(main_window):
     menu_bar = main_window.menuBar()
-    actions = [menu.title() for menu in menu_bar.findChildren(type(menu_bar.addMenu("tmp")))]
+    actions = [
+        menu.title() for menu in menu_bar.findChildren(type(menu_bar.addMenu("tmp")))
+    ]
 
     assert "&File" in actions
     assert "Edit" in actions
@@ -69,6 +73,7 @@ def test_actions_exist(main_window):
 # -------------------------------------------------------------------
 # Toolbar behavior
 # -------------------------------------------------------------------
+
 
 def test_zoom_actions(main_window):
     initial_zoom = main_window.view.zoom_factor
@@ -91,6 +96,7 @@ def test_zoom_line_edit(main_window):
 # -------------------------------------------------------------------
 # Scene reload / clearing
 # -------------------------------------------------------------------
+
 
 def test_clear_window(main_window):
     # Sanity: items exist initially
@@ -173,6 +179,7 @@ def test_reload_project_from_mal_falls_back_to_empty_project(monkeypatch, main_w
 # Object explorer update signal
 # -------------------------------------------------------------------
 
+
 def test_update_explorer_signal(main_window):
     # Should not raise
     main_window.update_childs_in_object_explorer_signal.emit()
@@ -181,6 +188,7 @@ def test_update_explorer_signal(main_window):
 # -------------------------------------------------------------------
 # Theme handling
 # -------------------------------------------------------------------
+
 
 def test_theme_selection(main_window):
     # First item is "None"
@@ -191,6 +199,7 @@ def test_theme_selection(main_window):
 # -------------------------------------------------------------------
 # Model interaction (lightweight)
 # -------------------------------------------------------------------
+
 
 def test_add_asset_updates_scene(main_window):
     scene = main_window.scene
@@ -204,6 +213,7 @@ def test_add_asset_updates_scene(main_window):
 # -------------------------------------------------------------------
 # Quit behavior
 # -------------------------------------------------------------------
+
 
 def test_quit_app_calls_app_quit(monkeypatch, main_window):
     called = {"quit": False}
