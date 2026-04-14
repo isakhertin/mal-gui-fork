@@ -69,6 +69,7 @@ class DraggableListWidget(QListWidget):
 
 
 class MainWindow(QMainWindow):
+    ATTACKER_METADATA_KEY = "_mal_gui_attackers"
     update_childs_in_object_explorer_signal = Signal()
 
     def __init__(self, app: QApplication, lang_file_path: str):
@@ -722,15 +723,47 @@ class MainWindow(QMainWindow):
             self.file_menu_reload_project_action.setEnabled(bool(self.lang_file_path))
 
     def add_positions_to_model(self):
-        """Add x/y positions to asset extras of model"""
+        """Add GUI-specific save metadata to model assets."""
         for asset in self.scene.model.assets.values():
             print(f"ASSET NAME:{asset.name} ID:{asset.id} TYPE:{asset.type}")
             item = self.scene._asset_id_to_item[int(asset.id)]
             position = item.pos()
 
-            extras_dict = asset.extras if asset.extras else {}
+            extras_dict = dict(asset.extras or {})
             extras_dict["position"] = {"x": position.x(), "y": position.y()}
             asset.extras = extras_dict
+
+        self._add_attackers_to_model_metadata()
+
+    def _serialize_attacker_items(self) -> list[dict]:
+        return [
+            {
+                "name": attacker_item.name,
+                "entry_points": list(attacker_item.entry_points),
+                "goals": list(attacker_item.goals),
+                "policy": attacker_item.policy.__name__,
+                "position": {
+                    "x": attacker_item.pos().x(),
+                    "y": attacker_item.pos().y(),
+                },
+            }
+            for attacker_item in self.scene.attacker_items
+        ]
+
+    def _add_attackers_to_model_metadata(self):
+        for asset in self.scene.model.assets.values():
+            extras_dict = dict(asset.extras or {})
+            extras_dict.pop(self.ATTACKER_METADATA_KEY, None)
+            asset.extras = extras_dict
+
+        attacker_metadata = self._serialize_attacker_items()
+        if not attacker_metadata or not self.scene.model.assets:
+            return
+
+        anchor_asset = min(self.scene.model.assets.values(), key=lambda asset: asset.id)
+        extras_dict = dict(anchor_asset.extras or {})
+        extras_dict[self.ATTACKER_METADATA_KEY] = attacker_metadata
+        anchor_asset.extras = extras_dict
 
     def save_model(self):
         """Save to file if filename set, else save as new file"""

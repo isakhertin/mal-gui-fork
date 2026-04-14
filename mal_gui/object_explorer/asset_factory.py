@@ -43,10 +43,18 @@ class AssetFactory:
         requested_item.build()
         return requested_item
 
-    def create_attacker_item(self, name: str, pos: QPointF, entry_points=None):
+    def create_attacker_item(
+        self, name: str, pos: QPointF, entry_points=None, goals=None, policy=None
+    ):
         asset_type = "Attacker"
         asset_info: AssetInfo = self.asset_registry[asset_type][0]
-        requested_item = AttackerItem(name, asset_info.asset_image, entry_points)
+        requested_item = AttackerItem(
+            name,
+            asset_info.asset_image,
+            entry_points=entry_points,
+            goals=goals,
+            policy=policy,
+        )
 
         requested_item.setPos(pos)
         requested_item.type_text_item.setPlainText(name or "Unnamed Attacker")

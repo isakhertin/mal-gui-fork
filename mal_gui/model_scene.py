@@ -35,6 +35,7 @@ from .connection_dialog import (
     GoalConnectionDialog,
 )
 from .object_explorer import AssetItem, AttackerItem, EditableTextItem, ItemBase
+from .object_explorer.attacker_item import resolve_policy
 from .assets_container import AssetsContainer, AssetsContainerRectangleBox
 
 from .undo_redo_commands import (
@@ -60,6 +61,8 @@ if TYPE_CHECKING:
 
 
 class ModelScene(QGraphicsScene):
+    ATTACKER_METADATA_KEY = "_mal_gui_attackers"
+
     def __init__(
         self,
         asset_factory: AssetFactory,
@@ -523,36 +526,63 @@ class ModelScene(QGraphicsScene):
             for name, agent_info in agents.items():
                 if isinstance(agent_info, AttackerSettings):
                     attacker_item = self.create_attacker(
-                        QPointF(0, 0), name, agent_info.entry_points
+                        QPointF(0, 0),
+                        name,
+                        entry_points=agent_info.entry_points,
+                        goals=agent_info.goals,
+                        policy=agent_info.policy,
                     )
+                    self._draw_attacker_connections(
+                        attacker_item, agent_info.entry_points, agent_info.goals
+                    )
+        else:
+            for attacker_info in self._get_model_attacker_metadata():
+                attacker_item = self.create_attacker(
+                    QPointF(
+                        attacker_info.get("position", {}).get("x", 0),
+                        attacker_info.get("position", {}).get("y", 0),
+                    ),
+                    attacker_info.get("name", "Attacker"),
+                    entry_points=attacker_info.get("entry_points", []),
+                    goals=attacker_info.get("goals", []),
+                    policy=resolve_policy(attacker_info.get("policy")),
+                )
+                self._draw_attacker_connections(
+                    attacker_item,
+                    attacker_info.get("entry_points", []),
+                    attacker_info.get("goals", []),
+                )
 
-                    for entry_point in agent_info.entry_points:
-                        entrypoint_full_name = (
-                            entry_point
-                            if isinstance(entry_point, str)
-                            else entry_point.full_name
-                        )
-                        attack_step = entrypoint_full_name.split(":")[-1]
-                        asset_name = entrypoint_full_name.removesuffix(
-                            ":" + attack_step
-                        )
-                        asset = self.model.get_asset_by_name(asset_name)
-                        assert asset, "Asset does not exist"
-                        self.add_entrypoint_connection(
-                            attack_step, attacker_item, self._asset_id_to_item[asset.id]
-                        )
+    def _draw_attacker_connections(self, attacker_item, entry_points, goals):
+        for entry_point in entry_points:
+            entrypoint_full_name = (
+                entry_point if isinstance(entry_point, str) else entry_point.full_name
+            )
+            attack_step = entrypoint_full_name.split(":")[-1]
+            asset_name = entrypoint_full_name.removesuffix(":" + attack_step)
+            asset = self.model.get_asset_by_name(asset_name)
+            assert asset, "Asset does not exist"
+            self.add_entrypoint_connection(
+                attack_step, attacker_item, self._asset_id_to_item[asset.id]
+            )
 
-                    for goal in agent_info.goals:
-                        goal_full_name = (
-                            goal if isinstance(goal, str) else goal.full_name
-                        )
-                        attack_step = goal_full_name.split(":")[-1]
-                        asset_name = goal_full_name.removesuffix(":" + attack_step)
-                        asset = self.model.get_asset_by_name(asset_name)
-                        assert asset, "Asset does not exist"
-                        self.add_goal_connection(
-                            attack_step, attacker_item, self._asset_id_to_item[asset.id]
-                        )
+        for goal in goals:
+            goal_full_name = goal if isinstance(goal, str) else goal.full_name
+            attack_step = goal_full_name.split(":")[-1]
+            asset_name = goal_full_name.removesuffix(":" + attack_step)
+            asset = self.model.get_asset_by_name(asset_name)
+            assert asset, "Asset does not exist"
+            self.add_goal_connection(
+                attack_step, attacker_item, self._asset_id_to_item[asset.id]
+            )
+
+    def _get_model_attacker_metadata(self):
+        for asset in self.model.assets.values():
+            extras = asset.extras or {}
+            attacker_data = extras.get(self.ATTACKER_METADATA_KEY)
+            if attacker_data:
+                return attacker_data
+        return []
 
     # based on connectionType use attacker or
     # add_association_connection
@@ -637,9 +667,17 @@ class ModelScene(QGraphicsScene):
         # Remove item from scene
         association_item.delete()
 
-    def create_attacker(self, position, name, entry_points=None):
+    def create_attacker(
+        self, position, name, entry_points=None, goals=None, policy=None
+    ):
         """Add new attacker to the model and scene"""
-        new_item = self.asset_factory.create_attacker_item(name, position, entry_points)
+        new_item = self.asset_factory.create_attacker_item(
+            name,
+            position,
+            entry_points=entry_points,
+            goals=goals,
+            policy=policy,
+        )
         self.attacker_items.append(new_item)
         self.addItem(new_item)
         return new_item
