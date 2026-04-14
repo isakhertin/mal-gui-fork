@@ -9,14 +9,11 @@ from .asset_item import AssetItem
 from .attacker_item import AttackerItem
 
 if TYPE_CHECKING:
-    from maltoolbox.model import ModelAsset, AttackerAttachment
+    from maltoolbox.model import ModelAsset
 
-AssetInfo = namedtuple(
-    'AssetInfo', ['asset_type', 'asset_name', 'asset_image']
-)
+AssetInfo = namedtuple("AssetInfo", ["asset_type", "asset_name", "asset_image"])
 
-
-class AssetFactory():
+class AssetFactory:
     def __init__(self, detector_index: DetectorIndex | None = None, parent=None):
         self.asset_registry: dict[str, list[AssetInfo]] = {}
         self.detector_index = detector_index or DetectorIndex()
@@ -33,19 +30,16 @@ class AssetFactory():
 
     def register_asset(self, asset_name, image_path):
         self.add_key_value_to_asset_registry(
-            asset_name,
-            AssetInfo(asset_name, asset_name, image_path)
+            asset_name, AssetInfo(asset_name, asset_name, image_path)
         )
 
-    def create_asset_item(
-        self, asset: ModelAsset, pos: QPointF
-    ):
+    def create_asset_item(self, asset: ModelAsset, pos: QPointF):
         asset_type = asset.lg_asset.name
         asset_info: AssetInfo = self.asset_registry[asset_type][0]
         requested_item = AssetItem(
             asset,
             asset_info.asset_image,
-            has_detector=self.detector_index.has_detector(asset_type)
+            has_detector=self.detector_index.has_detector(asset_type),
         )
 
         requested_item.setPos(pos)
@@ -55,18 +49,20 @@ class AssetFactory():
         return requested_item
 
     def create_attacker_item(
-        self, name: str, pos: QPointF, entry_points=None
+        self, name: str, pos: QPointF, entry_points=None, goals=None, policy=None
     ):
-        asset_type = 'Attacker'
+        asset_type = "Attacker"
         asset_info: AssetInfo = self.asset_registry[asset_type][0]
         requested_item = AttackerItem(
-            name, asset_info.asset_image, entry_points
+            name,
+            asset_info.asset_image,
+            entry_points=entry_points,
+            goals=goals,
+            policy=policy,
         )
 
         requested_item.setPos(pos)
-        requested_item.type_text_item.setPlainText(
-            name or "Unnamed Attacker"
-        )
+        requested_item.type_text_item.setPlainText(name or "Unnamed Attacker")
 
         requested_item.build()
         return requested_item

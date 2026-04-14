@@ -1,23 +1,22 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
-
-from PySide6.QtCore import Qt
+from typing import TYPE_CHECKING, Any
 
 from .item_base import ItemBase
 
 if TYPE_CHECKING:
     from maltoolbox.model import ModelAsset
 
+
 class AssetItem(ItemBase):
     # Starting Sequence Id with normal start at 100 (randomly taken)
 
     def __init__(
-            self,
-            asset: ModelAsset,
-            image_path: str,
-            has_detector: bool = False,
-            parent=None,
-        ):
+        self,
+        asset: ModelAsset,
+        image_path: str,
+        has_detector: bool = False,
+        parent=None,
+    ):
         print("Create Asset item with parent", parent)
 
         self.asset = asset
@@ -25,7 +24,6 @@ class AssetItem(ItemBase):
 
         super().__init__(asset.lg_asset.name, image_path, parent)
         self.has_detector = has_detector
-
 
     def update_name(self):
         super().update_name()
@@ -52,8 +50,8 @@ class AssetItem(ItemBase):
 
     def serialize(self):
         return {
-            'title': self.title,
-            'image_path': self.image_path,
-            'type': 'asset',
-            'object': self.asset
+            "title": self.title,
+            "image_path": self.image_path,
+            "type": "asset",
+            "object": self.asset,
         }

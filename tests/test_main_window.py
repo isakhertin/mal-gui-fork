@@ -1,10 +1,13 @@
 import pytest
+from types import SimpleNamespace
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QToolBar, QMessageBox
 from PySide6.QtCore import Qt, QPointF
 
 from maltoolbox.language import LanguageGraph
 from maltoolbox.model import Model
+from malsim import policies
+from malsim.config.agent_settings import AttackerSettings, AgentType
 
 from mal_gui.detectors import DetectorIndex
 from mal_gui.main_window import MainWindow
@@ -22,6 +25,7 @@ def main_window(app, lang_file_path):
 # -------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------
+
 
 def test_main_window_initialization(main_window):
     assert isinstance(main_window, QMainWindow)
@@ -48,9 +52,12 @@ def test_scene_is_model_scene(main_window):
 # Menu & Actions
 # -------------------------------------------------------------------
 
+
 def test_menu_bar_created(main_window):
     menu_bar = main_window.menuBar()
-    actions = [menu.title() for menu in menu_bar.findChildren(type(menu_bar.addMenu("tmp")))]
+    actions = [
+        menu.title() for menu in menu_bar.findChildren(type(menu_bar.addMenu("tmp")))
+    ]
 
     assert "&File" in actions
     assert "Edit" in actions
@@ -70,6 +77,7 @@ def test_actions_exist(main_window):
 # -------------------------------------------------------------------
 # Toolbar behavior
 # -------------------------------------------------------------------
+
 
 def test_zoom_actions(main_window):
     initial_zoom = main_window.view.zoom_factor
@@ -92,6 +100,7 @@ def test_zoom_line_edit(main_window):
 # -------------------------------------------------------------------
 # Scene reload / clearing
 # -------------------------------------------------------------------
+
 
 def test_clear_window(main_window):
     # Sanity: items exist initially
@@ -134,6 +143,35 @@ def test_load_model_recreates_scene(tmp_path, app, lang_file_path):
     assert window.scenario_file_name is None
 
 
+def test_load_scene_restores_attacker_policy_from_scenario(app, lang_file_path):
+    window = MainWindow(app, lang_file_path)
+
+    lang_graph = LanguageGraph.load_from_file(lang_file_path)
+    model = Model("ScenarioPolicyModel", lang_graph)
+    asset = model.add_asset("Application", name="App1")
+    asset.extras = {"position": {"x": 0, "y": 0}}
+
+    scenario = SimpleNamespace(
+        agent_settings={
+            "Attacker1": AttackerSettings(
+                name="Attacker1",
+                entry_points={"App1:attemptRead"},
+                goals={"App1:successfulRead"},
+                type=AgentType.ATTACKER,
+                policy=policies.DepthFirstAttacker,
+            )
+        }
+    )
+
+    window.load_scene(lang_file_path, model, scenario)
+
+    assert len(window.scene.attacker_items) == 1
+    attacker = window.scene.attacker_items[0]
+    assert attacker.policy is policies.DepthFirstAttacker
+    assert attacker.entry_points == ["App1:attemptRead"]
+    assert attacker.goals == ["App1:successfulRead"]
+
+
 def test_quick_load_current_file_reloads_model(tmp_path, monkeypatch, app, lang_file_path):
     window = MainWindow(app, lang_file_path)
 
@@ -152,6 +190,70 @@ def test_quick_load_current_file_reloads_model(tmp_path, monkeypatch, app, lang_
     assert window.scene is not reloaded_scene
     assert window.scene.model.name == "ReloadTarget"
     assert window.model_file_name == str(model_path)
+
+
+def test_save_model_persists_attacker_metadata(monkeypatch, main_window):
+    asset_item = main_window.scene.create_asset("Application", QPointF(100, 100), name="App1")
+    attacker_item = main_window.scene.create_attacker(
+        QPointF(25, 50),
+        "Attacker1",
+        entry_points=["App1:attemptRead"],
+        goals=["App1:successfulRead"],
+        policy=policies.RandomAgent,
+    )
+
+    main_window.model_file_name = "saved-model.yml"
+    saved = {}
+    monkeypatch.setattr(
+        main_window.scene.model,
+        "save_to_file",
+        lambda path: saved.setdefault("path", path),
+    )
+
+    main_window.save_model()
+
+    asset_extras = main_window.scene.model.assets[asset_item.asset.id].extras
+    attacker_metadata = asset_extras[main_window.ATTACKER_METADATA_KEY]
+
+    assert saved["path"] == "saved-model.yml"
+    assert attacker_metadata == [
+        {
+            "name": "Attacker1",
+            "entry_points": ["App1:attemptRead"],
+            "goals": ["App1:successfulRead"],
+            "policy": "RandomAgent",
+            "position": {"x": attacker_item.pos().x(), "y": attacker_item.pos().y()},
+        }
+    ]
+
+
+def test_load_scene_restores_attacker_policy_from_model_metadata(app, lang_file_path):
+    window = MainWindow(app, lang_file_path)
+
+    lang_graph = LanguageGraph.load_from_file(lang_file_path)
+    model = Model("ModelPolicyRoundTrip", lang_graph)
+    asset = model.add_asset("Application", name="App1")
+    asset.extras = {
+        "position": {"x": 0, "y": 0},
+        window.ATTACKER_METADATA_KEY: [
+            {
+                "name": "Attacker1",
+                "entry_points": ["App1:attemptRead"],
+                "goals": ["App1:successfulRead"],
+                "policy": "BreadthFirstAttacker",
+                "position": {"x": 10, "y": 20},
+            }
+        ],
+    }
+
+    window.load_scene(lang_file_path, model)
+
+    assert len(window.scene.attacker_items) == 1
+    attacker = window.scene.attacker_items[0]
+    assert attacker.policy is policies.BreadthFirstAttacker
+    assert attacker.entry_points == ["App1:attemptRead"]
+    assert attacker.goals == ["App1:successfulRead"]
+    assert attacker.pos() == QPointF(10, 20)
 
 
 def test_reload_project_from_mal_falls_back_to_empty_project(monkeypatch, main_window):
@@ -174,6 +276,7 @@ def test_reload_project_from_mal_falls_back_to_empty_project(monkeypatch, main_w
 # Object explorer update signal
 # -------------------------------------------------------------------
 
+
 def test_update_explorer_signal(main_window):
     # Should not raise
     main_window.update_childs_in_object_explorer_signal.emit()
@@ -182,6 +285,7 @@ def test_update_explorer_signal(main_window):
 # -------------------------------------------------------------------
 # Theme handling
 # -------------------------------------------------------------------
+
 
 def test_theme_selection(main_window):
     # First item is "None"
@@ -192,6 +296,7 @@ def test_theme_selection(main_window):
 # -------------------------------------------------------------------
 # Model interaction (lightweight)
 # -------------------------------------------------------------------
+
 
 def test_add_asset_updates_scene(main_window):
     scene = main_window.scene
@@ -227,6 +332,7 @@ def test_asset_factory_does_not_mark_assets_without_detectors(main_window):
 # -------------------------------------------------------------------
 # Quit behavior
 # -------------------------------------------------------------------
+
 
 def test_quit_app_calls_app_quit(monkeypatch, main_window):
     called = {"quit": False}

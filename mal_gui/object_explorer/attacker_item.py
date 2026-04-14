@@ -1,4 +1,3 @@
-from typing import Any
 from PySide6.QtGui import QColor
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGraphicsItem
@@ -15,22 +14,31 @@ ALLOWED_POLICIES = [
     policies.RandomAgent,
     policies.TTCSoftMinAttacker,
 ]
+POLICY_NAME_TO_CLASS = {cls.__name__: cls for cls in ALLOWED_POLICIES}
+
+
+def resolve_policy(policy_name: str | None):
+    if not policy_name:
+        return policies.PassiveAgent
+    return POLICY_NAME_TO_CLASS.get(policy_name, policies.PassiveAgent)
+
 
 class AttackerItem(ItemBase):
     # Starting Sequence Id with normal start at 100 (randomly taken)
 
     def __init__(
-            self,
-            name: str,
-            image_path: str,
-            entry_points=None,
-            goals=None,
-            parent=None,
-        ):
+        self,
+        name: str,
+        image_path: str,
+        entry_points=None,
+        goals=None,
+        policy=None,
+        parent=None,
+    ):
 
         # Scenario data may come in as sets; normalize to lists for GUI ops.
         self.entry_points: list[str] = list(entry_points) if entry_points else []
-        self.policy = policies.PassiveAgent
+        self.policy = policy or policies.PassiveAgent
         self.goals: list[str] = list(goals) if goals else []
         self.name = name
         self.attacker_toggle_state = False
@@ -41,7 +49,7 @@ class AttackerItem(ItemBase):
         self.timer.timeout.connect(self.update_status_color)
         self.timer.start(500)
 
-        super().__init__('Attacker', image_path, parent)
+        super().__init__("Attacker", image_path, parent)
 
     def update_type_text_item_position(self):
         super().update_type_text_item_position()
@@ -68,11 +76,10 @@ class AttackerItem(ItemBase):
 
     def set_item_attribute_value(self, attr_name, new_value_str) -> None:
         if attr_name == "policy":
-            mapping = {cls.__name__: cls for cls in ALLOWED_POLICIES}
-            if new_value_str not in mapping:
+            if new_value_str not in POLICY_NAME_TO_CLASS:
                 raise ValueError(f"Invalid policy: {new_value_str}")
             print("Change policy to ", new_value_str)
-            self.policy = mapping[new_value_str]
+            self.policy = POLICY_NAME_TO_CLASS[new_value_str]
             return
         raise AttributeError(f"{attr_name} is not editable")
 
@@ -103,8 +110,8 @@ class AttackerItem(ItemBase):
 
     def serialize(self):
         return {
-            'title': self.title,
-            'image_path': self.image_path,
-            'type': 'asset',
-            'object': self.entry_points
+            "title": self.title,
+            "image_path": self.image_path,
+            "type": "asset",
+            "object": self.entry_points,
         }
