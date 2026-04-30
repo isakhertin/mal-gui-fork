@@ -71,6 +71,7 @@ class DraggableListWidget(QListWidget):
 
 class MainWindow(QMainWindow):
     ATTACKER_METADATA_KEY = "_mal_gui_attackers"
+    META_DETECTORS_MODEL_KEY = "metadetectors"
     update_childs_in_object_explorer_signal = Signal()
 
     def __init__(self, app: QApplication, lang_file_path: str):
@@ -82,11 +83,15 @@ class MainWindow(QMainWindow):
         self.model_file_name = None
 
         self.lang_file_path = lang_file_path
+        self._loaded_meta_detector_data: list[dict] = []
         lang_graph = LanguageGraph.load_from_file(lang_file_path)
         self.detector_index = load_detector_index(lang_file_path)
         self.asset_factory = self.create_asset_factory(lang_graph)
         self.scene = self.create_scene(
-            lang_graph, self.asset_factory, Model("New Model", lang_graph)
+            lang_graph,
+            self.asset_factory,
+            Model("New Model", lang_graph),
+            meta_detector_metadata=self._loaded_meta_detector_data,
         )
 
         self.create_actions(self.scene)
@@ -122,7 +127,13 @@ class MainWindow(QMainWindow):
         self.lang_file_path = lang_file_path
         self.detector_index = load_detector_index(lang_file_path)
         self.asset_factory = self.create_asset_factory(lang_graph)
-        self.scene = self.create_scene(lang_graph, self.asset_factory, model, scenario)
+        self.scene = self.create_scene(
+            lang_graph,
+            self.asset_factory,
+            model,
+            scenario,
+            meta_detector_metadata=self._loaded_meta_detector_data,
+        )
 
         self.create_actions(self.scene)
         self.create_menu_bar()
@@ -157,6 +168,7 @@ class MainWindow(QMainWindow):
         # name as key and class as value
         asset_factory = AssetFactory(detector_index=self.detector_index)
         asset_factory.register_asset("Attacker", image_path("attacker.png"))
+        asset_factory.register_asset("Meta Detector", image_path("attacker.png"))
 
         for asset in lang_graph.assets.values():
             if not asset.is_abstract:
@@ -172,10 +184,18 @@ class MainWindow(QMainWindow):
         asset_factory: AssetFactory,
         model: Model,
         scenario: Optional[Scenario] = None,
+        meta_detector_metadata: Optional[list[dict]] = None,
     ):
         """Create and initialize scene from language"""
 
-        model_scene = ModelScene(asset_factory, lang_graph, model, self, scenario)
+        model_scene = ModelScene(
+            asset_factory,
+            lang_graph,
+            model,
+            self,
+            scenario,
+            meta_detector_metadata=meta_detector_metadata,
+        )
 
         return model_scene
 
@@ -462,7 +482,7 @@ class MainWindow(QMainWindow):
         self.file_menu_reload_project_action.setShortcut("Ctrl+Shift+r")
         self.file_menu_quick_load_action.triggered.connect(self.quick_load_current_file)
         self.file_menu_reload_project_action.triggered.connect(self.reload_project_from_mal)
-        self.file_menu_save_action.triggered.connect(self.save_scenario)
+        self.file_menu_save_action.triggered.connect(self.save_current_file)
         self.file_menu_save_as_action.triggered.connect(self.save_as_model)
         self.file_menu_export_scenario_action.triggered.connect(self.save_as_scenario)
         self.file_menu_save_as_drawio.triggered.connect(self.save_as_drawio)
@@ -695,6 +715,7 @@ class MainWindow(QMainWindow):
     def load_empty_project(self, lang_file_path: str):
         """Reload the MAL language and reset the window to an empty project."""
         lang_graph = LanguageGraph.load_from_file(lang_file_path)
+        self._loaded_meta_detector_data = []
         self.load_scene(lang_file_path, Model("New Model", lang_graph))
         self.model_file_name = None
         self.scenario_file_name = None
@@ -704,16 +725,23 @@ class MainWindow(QMainWindow):
 
     def load_scenario(self, file_path: str):
         """Load model and agents from a scenario"""
+        self._loaded_meta_detector_data = self._load_meta_detectors_from_model_file(
+            file_path
+        )
         scenario = Scenario.load_from_file(file_path)
         # Reload in case language was changed
         self.load_scene(scenario._lang_file, scenario.model, scenario)
         self.model_file_name = None
         self.scenario_file_name = file_path
-        self._lang_file = yaml.safe_load(open(file_path, "r"))["lang_file"]
+        with open(file_path, "r", encoding="utf-8") as file_obj:
+            self._lang_file = yaml.safe_load(file_obj)["lang_file"]
         self.update_scenario_save_action_state()
 
     def load_model(self, file_path: str):
         """Load a MAL model from a file"""
+        self._loaded_meta_detector_data = self._load_meta_detectors_from_model_file(
+            file_path
+        )
         model = Model.load_from_file(file_path, self.scene.lang_graph)
         self.load_scene(self.lang_file_path, model)
         self.scenario_file_name = None
@@ -725,13 +753,25 @@ class MainWindow(QMainWindow):
     def update_scenario_save_action_state(self):
         """Enable save action only when a loaded scenario file is available."""
         if hasattr(self, "file_menu_save_action"):
-            self.file_menu_save_action.setEnabled(bool(self.scenario_file_name))
+            self.file_menu_save_action.setEnabled(
+                bool(self.scenario_file_name or self.model_file_name)
+            )
         if hasattr(self, "file_menu_quick_load_action"):
             self.file_menu_quick_load_action.setEnabled(
                 bool(self.scenario_file_name or self.model_file_name)
             )
         if hasattr(self, "file_menu_reload_project_action"):
             self.file_menu_reload_project_action.setEnabled(bool(self.lang_file_path))
+
+    def save_current_file(self):
+        """Save the currently loaded scenario or model."""
+        if self.scenario_file_name:
+            self.save_scenario()
+            return
+        if self.model_file_name:
+            self.save_model()
+            return
+        self.show_error_popup("No loaded file to save")
 
     def add_positions_to_model(self):
         """Add GUI-specific save metadata to model assets."""
@@ -749,6 +789,7 @@ class MainWindow(QMainWindow):
     def _serialize_attacker_items(self) -> list[dict]:
         return [
             {
+                "kind": getattr(attacker_item, "ITEM_KIND", "attacker"),
                 "name": attacker_item.name,
                 "entry_points": list(attacker_item.entry_points),
                 "goals": list(attacker_item.goals),
@@ -759,7 +800,37 @@ class MainWindow(QMainWindow):
                 },
             }
             for attacker_item in self.scene.attacker_items
+            if getattr(attacker_item, "ITEM_KIND", "attacker") == "attacker"
         ]
+
+    def _serialize_meta_detector_items(self) -> dict[int, dict]:
+        serialized_meta_detectors = {}
+        for index, meta_detector_item in enumerate(
+            (
+                item
+                for item in self.scene.attacker_items
+                if getattr(item, "ITEM_KIND", "attacker") == "meta_detector"
+            ),
+            start=1,
+        ):
+            associated_assets = {}
+            for asset_name in meta_detector_item.connected_assets:
+                asset = self.scene.model.get_asset_by_name(asset_name)
+                if asset:
+                    associated_assets[asset.id] = asset.name
+
+            serialized_meta_detectors[index] = {
+                "associated_assets": associated_assets,
+                "extras": {
+                    "position": {
+                        "x": meta_detector_item.pos().x(),
+                        "y": meta_detector_item.pos().y(),
+                    }
+                },
+                "name": meta_detector_item.name,
+            }
+
+        return serialized_meta_detectors
 
     def _add_attackers_to_model_metadata(self):
         for asset in self.scene.model.assets.values():
@@ -776,11 +847,54 @@ class MainWindow(QMainWindow):
         extras_dict[self.ATTACKER_METADATA_KEY] = attacker_metadata
         anchor_asset.extras = extras_dict
 
+    def _write_meta_detectors_to_model_file(self, file_path: str):
+        with open(file_path, "r", encoding="utf-8") as file_obj:
+            model_dict = yaml.safe_load(file_obj) or {}
+        model_section = dict(model_dict.get("model") or {})
+        meta_detector_data = self._serialize_meta_detector_items()
+
+        if meta_detector_data:
+            model_section[self.META_DETECTORS_MODEL_KEY] = meta_detector_data
+        else:
+            model_section.pop(self.META_DETECTORS_MODEL_KEY, None)
+
+        if model_section:
+            model_dict["model"] = model_section
+        else:
+            model_dict.pop("model", None)
+
+        with open(file_path, "w", encoding="utf-8") as file_obj:
+            yaml.safe_dump(model_dict, file_obj, sort_keys=False)
+
+    def _load_meta_detectors_from_model_file(self, file_path: str) -> list[dict]:
+        with open(file_path, "r", encoding="utf-8") as file_obj:
+            model_dict = yaml.safe_load(file_obj) or {}
+        model_section = model_dict.get("model") or {}
+        meta_detectors = model_section.get(self.META_DETECTORS_MODEL_KEY) or {}
+
+        loaded_meta_detectors = []
+        for meta_detector_info in meta_detectors.values():
+            associated_assets = meta_detector_info.get("associated_assets") or {}
+            position = (meta_detector_info.get("extras") or {}).get("position") or {}
+            loaded_meta_detectors.append(
+                {
+                    "name": meta_detector_info.get("name", "Meta Detector"),
+                    "connections": list(associated_assets.values()),
+                    "position": {
+                        "x": position.get("x", 0),
+                        "y": position.get("y", 0),
+                    },
+                }
+            )
+
+        return loaded_meta_detectors
+
     def save_model(self):
         """Save to file if filename set, else save as new file"""
         if self.model_file_name:
             self.add_positions_to_model()
             self.scene.model.save_to_file(self.model_file_name)
+            self._write_meta_detectors_to_model_file(self.model_file_name)
         else:
             self.save_as_model()
 
@@ -800,6 +914,7 @@ class MainWindow(QMainWindow):
             self.model_file_name = file_path
             try:
                 self.scene.model.save_to_file(file_path)
+                self._write_meta_detectors_to_model_file(file_path)
             except Exception as e:
                 print(f"Error saving model: {e}")
                 self.show_error_popup("Error saving model: " + str(e))
@@ -873,6 +988,8 @@ class MainWindow(QMainWindow):
         agents = self.scene.scenario.agent_settings if self.scene.scenario else {}
         # Add attacker agents from scene
         for attacker_item in self.scene.attacker_items:
+            if getattr(attacker_item, "ITEM_KIND", "attacker") != "attacker":
+                continue
             agent = agents.get(attacker_item.name)
             # Only thing that can be changed by GUI for agents is entry points
             if isinstance(agent, AttackerSettings):
@@ -928,11 +1045,14 @@ class MainWindow(QMainWindow):
                     observable_steps=is_observable,
                 )
                 scenario.save_to_file(file_path)
+                self._write_meta_detectors_to_model_file(file_path)
 
                 if hasattr(self, "_lang_file"):
-                    scenario_dict = yaml.safe_load(open(file_path, "r"))
+                    with open(file_path, "r", encoding="utf-8") as file_obj:
+                        scenario_dict = yaml.safe_load(file_obj)
                     scenario_dict["lang_file"] = self._lang_file
-                    yaml.safe_dump(scenario_dict, open(file_path, "w"))
+                    with open(file_path, "w", encoding="utf-8") as file_obj:
+                        yaml.safe_dump(scenario_dict, file_obj, sort_keys=False)
             except Exception as e:
                 self.show_error_popup("Could not save scenario: " + str(e))
 

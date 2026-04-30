@@ -7,6 +7,7 @@ from PySide6.QtCore import QPointF
 from ..detectors import DetectorIndex
 from .asset_item import AssetItem
 from .attacker_item import AttackerItem
+from .meta_detector_item import MetaDetectorItem
 
 if TYPE_CHECKING:
     from maltoolbox.model import ModelAsset
@@ -63,6 +64,32 @@ class AssetFactory:
 
         requested_item.setPos(pos)
         requested_item.type_text_item.setPlainText(name or "Unnamed Attacker")
+
+        requested_item.build()
+        return requested_item
+
+    def create_meta_detector_item(
+        self,
+        name: str,
+        pos: QPointF,
+        connections=None,
+        entry_points=None,
+        goals=None,
+        policy=None,
+    ):
+        asset_type = "Meta Detector"
+        asset_info: AssetInfo = self.asset_registry[asset_type][0]
+        requested_item = MetaDetectorItem(
+            name,
+            asset_info.asset_image,
+            connections=connections,
+            entry_points=entry_points,
+            goals=goals,
+            policy=policy,
+        )
+
+        requested_item.setPos(pos)
+        requested_item.type_text_item.setPlainText(name or "Unnamed Meta Detector")
 
         requested_item.build()
         return requested_item

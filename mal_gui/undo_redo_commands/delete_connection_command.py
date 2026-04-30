@@ -5,6 +5,7 @@ from ..connection_item import (
     AssociationConnectionItem,
     EntrypointConnectionItem,
     GoalConnectionItem,
+    MetaDetectorConnectionItem,
 )
 
 if TYPE_CHECKING:
@@ -26,6 +27,8 @@ class DeleteConnectionCommand(QUndoCommand):
             self.scene.remove_entrypoint(self.connection)
         elif isinstance(self.connection, GoalConnectionItem):
             self.scene.remove_goal(self.connection)
+        elif isinstance(self.connection, MetaDetectorConnectionItem):
+            self.scene.remove_meta_detector_connection(self.connection)
         else:
             raise ValueError("Unknown connection type")
 
@@ -68,5 +71,13 @@ class DeleteConnectionCommand(QUndoCommand):
                 self.connection.attacker_item.goals.add(step_full_name)
             elif step_full_name not in self.connection.attacker_item.goals:
                 self.connection.attacker_item.goals.append(step_full_name)
+        elif isinstance(self.connection, MetaDetectorConnectionItem):
+            self.connection = self.scene.add_meta_detector_connection(
+                self.connection.meta_detector_item,
+                self.connection.asset_item,
+            )
+            asset_name = self.connection.asset_item.asset.name
+            if asset_name not in self.connection.meta_detector_item.connected_assets:
+                self.connection.meta_detector_item.connected_assets.append(asset_name)
         else:
             raise ValueError("Unknown connection type")

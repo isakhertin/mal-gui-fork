@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QPointF, QLineF
-from PySide6.QtGui import QBrush, QColor, QPen
+from PySide6.QtGui import QBrush, QColor, QPen, QPainterPath, QPainterPathStroker
 from PySide6.QtWidgets import (
     QGraphicsLineItem,
     QGraphicsTextItem,
@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 if TYPE_CHECKING:
     from maltoolbox.language import LanguageGraphAssociation
     from .model_scene import ModelScene
-    from .object_explorer import AssetItem, AttackerItem
+    from .object_explorer import AssetItem, AttackerItem, MetaDetectorItem
 
 
 class IConnectionItem(QGraphicsLineItem):
@@ -275,3 +275,69 @@ class GoalConnectionItem(AttackerConnectionBase):
     COLOR = QColor(255, 0, 0)
     LINE_STYLE = Qt.DashLine
     ICON_TEXT = "🏁"
+
+
+class MetaDetectorConnectionItem(IConnectionItem):
+    COLOR = QColor(255, 165, 0)
+
+    def __init__(
+        self,
+        meta_detector_item: MetaDetectorItem,
+        asset_item: AssetItem,
+        scene: ModelScene,
+        parent=None,
+    ):
+        super().__init__(parent)
+
+        pen = QPen(self.COLOR, 2)
+        self.setPen(pen)
+        self.setZValue(0)
+        self.setFlag(QGraphicsLineItem.ItemIsSelectable, True)
+
+        self.meta_detector_item = meta_detector_item
+        self.asset_item = asset_item
+        self._scene = scene
+
+        self.meta_detector_item.add_connection(self)
+        self.asset_item.add_connection(self)
+
+        self.update_path()
+
+    def create_label(self, text):
+        return None
+
+    def get_item_attribute_values(self) -> dict[str, dict]:
+        return {
+            "type": {"value": "Meta Detector Connection", "editable": False},
+            "from": {"value": self.meta_detector_item.name, "editable": False},
+            "to": {"value": self.asset_item.asset.name, "editable": False},
+        }
+
+    def set_item_attribute_value(self, attr_name, new_value_str) -> None:
+        raise AttributeError(f"{attr_name} is not editable")
+
+    def update_path(self):
+        start_pos = self.meta_detector_item.sceneBoundingRect().center()
+        end_pos = self.asset_item.sceneBoundingRect().center()
+        self.setLine(QLineF(start_pos, end_pos))
+
+    def shape(self):
+        # Make the line easier to right-click than the visual 2px stroke.
+        path = QPainterPath()
+        path.moveTo(self.line().p1())
+        path.lineTo(self.line().p2())
+
+        stroker = QPainterPathStroker()
+        stroker.setWidth(12)
+        return stroker.createStroke(path)
+
+    def remove_labels(self):
+        return
+
+    def restore_labels(self):
+        return
+
+    def delete(self):
+        self.meta_detector_item.remove_connection(self)
+        self.asset_item.remove_connection(self)
+        self._scene.removeItem(self)
