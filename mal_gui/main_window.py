@@ -814,10 +814,15 @@ class MainWindow(QMainWindow):
             start=1,
         ):
             associated_assets = {}
+            associated_asset_labels = {}
             for asset_name in meta_detector_item.connected_assets:
                 asset = self.scene.model.get_asset_by_name(asset_name)
                 if asset:
                     associated_assets[asset.id] = asset.name
+                    label_value = meta_detector_item.connected_asset_labels.get(
+                        asset.name, 1
+                    )
+                    associated_asset_labels[asset.id] = label_value
 
             serialized_meta_detectors[index] = {
                 "associated_assets": associated_assets,
@@ -829,6 +834,9 @@ class MainWindow(QMainWindow):
                 },
                 "name": meta_detector_item.name,
             }
+            serialized_meta_detectors[index][
+                "associated_asset_labels"
+            ] = associated_asset_labels
 
         return serialized_meta_detectors
 
@@ -875,11 +883,24 @@ class MainWindow(QMainWindow):
         loaded_meta_detectors = []
         for meta_detector_info in meta_detectors.values():
             associated_assets = meta_detector_info.get("associated_assets") or {}
+            associated_asset_labels = (
+                meta_detector_info.get("associated_asset_labels") or {}
+            )
             position = (meta_detector_info.get("extras") or {}).get("position") or {}
+            connection_labels = {}
+            for asset_id, asset_name in associated_assets.items():
+                try:
+                    label_value = associated_asset_labels.get(
+                        asset_id, associated_asset_labels.get(str(asset_id), 1)
+                    )
+                except AttributeError:
+                    label_value = 1
+                connection_labels[asset_name] = int(label_value)
             loaded_meta_detectors.append(
                 {
                     "name": meta_detector_info.get("name", "Meta Detector"),
                     "connections": list(associated_assets.values()),
+                    "connection_labels": connection_labels,
                     "position": {
                         "x": position.get("x", 0),
                         "y": position.get("y", 0),

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QGraphicsRectItem,
     QGraphicsTextItem,
+    QInputDialog,
 )
 from PySide6.QtGui import QTransform, QAction, QUndoStack, QPen
 from PySide6.QtCore import QLineF, Qt, QPointF, QRectF
@@ -477,9 +478,9 @@ class ModelScene(QGraphicsScene):
                 print("Found Connection Item", item)
                 self.show_connection_item_context_menu(event.screenPos(), item)
 
-            elif isinstance(item, (QGraphicsTextItem)):
+            elif isinstance(item, QGraphicsTextItem):
                 # Let user right click text box belonging to assoc/entrypoint item
-                print("Found text box", item)
+                print("Found label item", item)
                 item = item.parentItem()
                 item = item.parentItem() if item else None
                 if isinstance(
@@ -500,6 +501,21 @@ class ModelScene(QGraphicsScene):
             elif isinstance(item, AssetsContainerRectangleBox):
                 print("Found Assets Container Box", item)
                 self.show_assets_container_box_context_menu(event.screenPos(), item)
+
+            elif isinstance(item, QGraphicsRectItem):
+                print("Found label background", item)
+                item = item.parentItem()
+                item = item.parentItem() if item else None
+                if isinstance(
+                    item,
+                    (
+                        AssociationConnectionItem,
+                        AttackerConnectionBase,
+                        MetaDetectorConnectionItem,
+                    ),
+                ):
+                    print("Found parent of label background, a connection item")
+                    self.show_connection_item_context_menu(event.screenPos(), item)
         else:
             self.show_scene_context_menu(event.screenPos(), event.scenePos())
 
@@ -603,7 +619,9 @@ class ModelScene(QGraphicsScene):
             )
             if kind == "meta_detector":
                 self._draw_meta_detector_connections(
-                    attacker_item, attacker_info.get("connections", [])
+                    attacker_item,
+                    attacker_info.get("connections", []),
+                    attacker_info.get("connection_labels", {}),
                 )
 
         for meta_detector_info in self.meta_detector_metadata:
@@ -614,10 +632,12 @@ class ModelScene(QGraphicsScene):
                 ),
                 meta_detector_info.get("name", "Meta Detector"),
                 connections=meta_detector_info.get("connections", []),
+                connection_labels=meta_detector_info.get("connection_labels", {}),
             )
             self._draw_meta_detector_connections(
                 meta_detector_item,
                 meta_detector_info.get("connections", []),
+                meta_detector_info.get("connection_labels", {}),
             )
 
     def _draw_attacker_connections(self, attacker_item, entry_points, goals):
@@ -643,12 +663,17 @@ class ModelScene(QGraphicsScene):
                 attack_step, attacker_item, self._asset_id_to_item[asset.id]
             )
 
-    def _draw_meta_detector_connections(self, meta_detector_item, connections):
+    def _draw_meta_detector_connections(
+        self, meta_detector_item, connections, connection_labels=None
+    ):
+        connection_labels = connection_labels or {}
         for asset_name in connections:
             asset = self.model.get_asset_by_name(asset_name)
             assert asset, "Asset does not exist"
             self.add_meta_detector_connection(
-                meta_detector_item, self._asset_id_to_item[asset.id]
+                meta_detector_item,
+                self._asset_id_to_item[asset.id],
+                connection_labels.get(asset_name, 1),
             )
 
     def _get_model_attacker_metadata(self):
@@ -696,9 +721,20 @@ class ModelScene(QGraphicsScene):
         connection.update_path()
         return connection
 
-    def add_meta_detector_connection(self, meta_detector_item, asset_item):
-        connection = MetaDetectorConnectionItem(meta_detector_item, asset_item, self)
+    def add_meta_detector_connection(
+        self, meta_detector_item, asset_item, label_value=None
+    ):
+        label_value = (
+            meta_detector_item.connected_asset_labels.get(asset_item.asset.name, 1)
+            if label_value is None
+            else int(label_value)
+        )
+        meta_detector_item.connected_asset_labels[asset_item.asset.name] = label_value
+        connection = MetaDetectorConnectionItem(
+            meta_detector_item, asset_item, self, label_value
+        )
         self.addItem(connection)
+        connection.restore_labels()
         connection.update_path()
         return connection
 
@@ -766,6 +802,7 @@ class ModelScene(QGraphicsScene):
         position,
         name,
         connections=None,
+        connection_labels=None,
         entry_points=None,
         goals=None,
         policy=None,
@@ -775,6 +812,7 @@ class ModelScene(QGraphicsScene):
             position,
             name,
             connections=connections,
+            connection_labels=connection_labels,
             entry_points=entry_points,
             goals=goals,
             policy=policy,
@@ -786,6 +824,7 @@ class ModelScene(QGraphicsScene):
         position,
         name,
         connections=None,
+        connection_labels=None,
         entry_points=None,
         goals=None,
         policy=None,
@@ -803,6 +842,7 @@ class ModelScene(QGraphicsScene):
                 name,
                 position,
                 connections=connections,
+                connection_labels=connection_labels,
                 entry_points=entry_points,
                 goals=goals,
                 policy=policy,
@@ -859,6 +899,9 @@ class ModelScene(QGraphicsScene):
             )
         except ValueError:
             print("meta detector connection already deleted")
+        meta_detector_connection_item.meta_detector_item.connected_asset_labels.pop(
+            asset_name, None
+        )
 
         meta_detector_connection_item.delete()
 
@@ -1100,12 +1143,32 @@ class ModelScene(QGraphicsScene):
     def show_connection_item_context_menu(self, position, connection_item):
         print("AssociationConnectionItem Context menu activated")
         menu = QMenu()
+        change_meta_detector_label_action = None
+        if isinstance(connection_item, MetaDetectorConnectionItem):
+            change_meta_detector_label_action = QAction("Change Label", self)
+            menu.addAction(change_meta_detector_label_action)
+
         connection_item_delete_action = QAction("Delete Connection", self)
 
         menu.addAction(connection_item_delete_action)
         action = menu.exec(position)
 
         # In future we may want more option. So "if" condition.
+        if action == change_meta_detector_label_action:
+            label_value, ok = QInputDialog.getInt(
+                None,
+                "Change Meta Detector Label",
+                "Label:",
+                connection_item.label_value,
+                -2147483648,
+                2147483647,
+                1,
+            )
+            if ok:
+                connection_item.set_label_value(label_value)
+                self.main_window.item_details_window.update_item_details_window(
+                    connection_item
+                )
         if action == connection_item_delete_action:
             self.delete_connection(connection_item)
 

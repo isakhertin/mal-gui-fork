@@ -75,9 +75,13 @@ class DeleteConnectionCommand(QUndoCommand):
             self.connection = self.scene.add_meta_detector_connection(
                 self.connection.meta_detector_item,
                 self.connection.asset_item,
+                self.connection.label_value,
             )
             asset_name = self.connection.asset_item.asset.name
             if asset_name not in self.connection.meta_detector_item.connected_assets:
                 self.connection.meta_detector_item.connected_assets.append(asset_name)
+            self.connection.meta_detector_item.connected_asset_labels[asset_name] = (
+                self.connection.label_value
+            )
         else:
             raise ValueError("Unknown connection type")

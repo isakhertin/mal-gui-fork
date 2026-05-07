@@ -285,6 +285,7 @@ class MetaDetectorConnectionItem(IConnectionItem):
         meta_detector_item: MetaDetectorItem,
         asset_item: AssetItem,
         scene: ModelScene,
+        label_value: int = 1,
         parent=None,
     ):
         super().__init__(parent)
@@ -297,29 +298,70 @@ class MetaDetectorConnectionItem(IConnectionItem):
         self.meta_detector_item = meta_detector_item
         self.asset_item = asset_item
         self._scene = scene
+        self.label_value = int(label_value)
 
         self.meta_detector_item.add_connection(self)
         self.asset_item.add_connection(self)
 
+        self.label = self.create_label(str(self.label_value))
+
         self.update_path()
 
-    def create_label(self, text):
-        return None
+    def create_label(self, text) -> QGraphicsItemGroup:
+        self.label_text = QGraphicsTextItem(text)
+        self.label_text.setDefaultTextColor(Qt.black)
+
+        rect = self.label_text.boundingRect()
+        self.label_background = QGraphicsRectItem(rect)
+        self.label_background.setBrush(QBrush(QColor(255, 255, 255, 200)))
+        self.label_background.setPen(Qt.NoPen)
+
+        label_group = self._scene.createItemGroup(
+            [self.label_background, self.label_text]
+        )
+        label_group.setParentItem(self)
+        label_group.setZValue(1)
+        return label_group
+
+    def set_label_value(self, label_value: int):
+        self.label_value = int(label_value)
+        self.meta_detector_item.connected_asset_labels[
+            self.asset_item.asset.name
+        ] = self.label_value
+        self.label_text.setPlainText(str(self.label_value))
+        self.label_background.setRect(self.label_text.boundingRect())
+        self.update_path()
 
     def get_item_attribute_values(self) -> dict[str, dict]:
         return {
             "type": {"value": "Meta Detector Connection", "editable": False},
             "from": {"value": self.meta_detector_item.name, "editable": False},
             "to": {"value": self.asset_item.asset.name, "editable": False},
+            "label": {"value": self.label_value, "editable": True},
         }
 
     def set_item_attribute_value(self, attr_name, new_value_str) -> None:
-        raise AttributeError(f"{attr_name} is not editable")
+        if attr_name != "label":
+            raise AttributeError(f"{attr_name} is not editable")
+        try:
+            label_value = int(new_value_str)
+        except ValueError:
+            self.label_text.setPlainText(str(self.label_value))
+            return
+        self.set_label_value(label_value)
 
     def update_path(self):
         start_pos = self.meta_detector_item.sceneBoundingRect().center()
         end_pos = self.asset_item.sceneBoundingRect().center()
         self.setLine(QLineF(start_pos, end_pos))
+        mid = self.line().pointAt(0.5)
+        self.label.setPos(
+            mid
+            - QPointF(
+                self.label.boundingRect().width() / 2,
+                self.label.boundingRect().height() / 2,
+            )
+        )
 
     def shape(self):
         # Make the line easier to right-click than the visual 2px stroke.
@@ -332,12 +374,13 @@ class MetaDetectorConnectionItem(IConnectionItem):
         return stroker.createStroke(path)
 
     def remove_labels(self):
-        return
+        self._scene.removeItem(self.label)
 
     def restore_labels(self):
-        return
+        self._scene.addItem(self.label)
 
     def delete(self):
         self.meta_detector_item.remove_connection(self)
         self.asset_item.remove_connection(self)
+        self.remove_labels()
         self._scene.removeItem(self)

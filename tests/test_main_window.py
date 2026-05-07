@@ -310,16 +310,81 @@ def test_save_model_preserves_all_loaded_meta_detector_connections(
                 app1.id: "App1",
                 app2.id: "App2",
             },
+            "associated_asset_labels": {
+                app1.id: 1,
+                app2.id: 1,
+            },
             "extras": {"position": {"x": 30.0, "y": 40.0}},
             "name": "Meta Detector 1",
         }
     }
 
 
+def test_save_model_persists_non_default_meta_detector_connection_label(
+    tmp_path, main_window
+):
+    import yaml
+
+    asset_item = main_window.scene.create_asset(
+        "Application", QPointF(100, 100), name="App1"
+    )
+    meta_detector_item = main_window.scene.create_meta_detector(
+        QPointF(25, 50),
+        "Meta Detector 1",
+    )
+    meta_detector_item.connected_assets.append("App1")
+    meta_detector_item.connected_asset_labels["App1"] = 3
+
+    output_path = tmp_path / "saved-model.yml"
+    main_window.model_file_name = str(output_path)
+
+    main_window.save_model()
+
+    saved_yaml = yaml.safe_load(output_path.read_text())
+    assert saved_yaml["model"]["metadetectors"][1][
+        "associated_asset_labels"
+    ] == {asset_item.asset.id: 3}
+
+
+def test_load_model_restores_meta_detector_connection_label(
+    tmp_path, app, lang_file_path
+):
+    import yaml
+
+    window = MainWindow(app, lang_file_path)
+
+    lang_graph = LanguageGraph.load_from_file(lang_file_path)
+    model = Model("MetaDetectorLabelRoundTrip", lang_graph)
+    asset = model.add_asset("Application", name="App1")
+    asset.extras = {"position": {"x": 0, "y": 0}}
+    model_path = tmp_path / "meta-detector-label.yml"
+    model.save_to_file(model_path)
+
+    model_yaml = yaml.safe_load(model_path.read_text())
+    model_yaml["model"] = {
+        "metadetectors": {
+            1: {
+                "associated_assets": {asset.id: asset.name},
+                "associated_asset_labels": {asset.id: 4},
+                "extras": {"position": {"x": 30, "y": 40}},
+                "name": "Meta Detector 1",
+            }
+        }
+    }
+    model_path.write_text(yaml.safe_dump(model_yaml, sort_keys=False))
+
+    window.load_model(str(model_path))
+
+    meta_detector = window.scene.attacker_items[0]
+    assert meta_detector.connected_asset_labels == {"App1": 4}
+
+
 def test_save_model_persists_meta_detector_metadata(tmp_path, main_window):
     import yaml
 
-    asset_item = main_window.scene.create_asset("Application", QPointF(100, 100), name="App1")
+    asset_item = main_window.scene.create_asset(
+        "Application", QPointF(100, 100), name="App1"
+    )
     meta_detector_item = main_window.scene.create_meta_detector(
         QPointF(25, 50),
         "Meta Detector 1",
@@ -335,6 +400,7 @@ def test_save_model_persists_meta_detector_metadata(tmp_path, main_window):
     assert saved_yaml["model"]["metadetectors"] == {
         1: {
             "associated_assets": {asset_item.asset.id: "App1"},
+            "associated_asset_labels": {asset_item.asset.id: 1},
             "extras": {
                 "position": {
                     "x": meta_detector_item.pos().x(),
@@ -351,7 +417,9 @@ def test_save_current_file_saves_loaded_model_with_meta_detectors(
 ):
     import yaml
 
-    asset_item = main_window.scene.create_asset("Application", QPointF(100, 100), name="App1")
+    asset_item = main_window.scene.create_asset(
+        "Application", QPointF(100, 100), name="App1"
+    )
     meta_detector_item = main_window.scene.create_meta_detector(
         QPointF(25, 50),
         "Meta Detector 1",
@@ -368,6 +436,7 @@ def test_save_current_file_saves_loaded_model_with_meta_detectors(
     assert saved_yaml["model"]["metadetectors"] == {
         1: {
             "associated_assets": {asset_item.asset.id: "App1"},
+            "associated_asset_labels": {asset_item.asset.id: 1},
             "extras": {
                 "position": {
                     "x": meta_detector_item.pos().x(),
