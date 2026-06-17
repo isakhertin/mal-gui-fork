@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import Optional
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -975,14 +977,80 @@ class MainWindow(QMainWindow):
             self.scene.model.name = Path(file_path).stem
             self.model_file_name = file_path
             try:
+                self.add_positions_to_model()
                 create_drawio_file_with_images(
                     self.scene.model, output_filename=file_path
                 )
+                self._add_detectors_to_drawio_file(file_path)
             except Exception as e:
                 print(f"Error saving model: {e}")
                 self.show_error_popup("Error saving model: " + str(e))
                 self.model_file_name = None
                 return
+
+    def _add_detectors_to_drawio_file(
+        self, file_path: str, coordinate_scale: float = 0.75
+    ):
+        """Append detector markers to a draw.io file exported by maltoolbox."""
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+        root_cell = root.find("./diagram/mxGraphModel/root")
+        if root_cell is None:
+            return
+
+        for asset in self.scene.model.assets.values():
+            item = self.scene._asset_id_to_item.get(int(asset.id))
+            if not item or not getattr(item, "has_detector", False):
+                continue
+
+            position = dict(asset.extras or {}).get("position") or {}
+            x = round(position.get("x", item.pos().x()) * coordinate_scale)
+            y = round(position.get("y", item.pos().y()) * coordinate_scale)
+            self._append_drawio_detector_marker(root_cell, asset.id, x, y)
+
+        rough_string = ET.tostring(root, "utf-8")
+        reparsed = minidom.parseString(rough_string)
+        pretty_xml = reparsed.toprettyxml(indent="  ")
+        lines = [line for line in pretty_xml.split("\n") if line.strip()]
+        with open(file_path, "w", encoding="utf-8") as file_obj:
+            file_obj.write("\n".join(lines))
+
+    def _append_drawio_detector_marker(self, root_cell, asset_id: int, x: int, y: int):
+        detector_color = "#B41E1E"
+        stroke_color = "#141414"
+        stem = ET.SubElement(root_cell, "mxCell")
+        stem.set("id", f"detector_{asset_id}_stem")
+        stem.set(
+            "style",
+            "rounded=0;whiteSpace=wrap;html=1;"
+            f"fillColor={detector_color};strokeColor={stroke_color};",
+        )
+        stem.set("vertex", "1")
+        stem.set("parent", "1")
+
+        stem_geometry = ET.SubElement(stem, "mxGeometry")
+        stem_geometry.set("x", str(x + 112))
+        stem_geometry.set("y", str(y - 12))
+        stem_geometry.set("width", "4")
+        stem_geometry.set("height", "42")
+        stem_geometry.set("as", "geometry")
+
+        diamond = ET.SubElement(root_cell, "mxCell")
+        diamond.set("id", f"detector_{asset_id}_diamond")
+        diamond.set(
+            "style",
+            "rhombus;whiteSpace=wrap;html=1;"
+            f"fillColor={detector_color};strokeColor={stroke_color};",
+        )
+        diamond.set("vertex", "1")
+        diamond.set("parent", "1")
+
+        diamond_geometry = ET.SubElement(diamond, "mxGeometry")
+        diamond_geometry.set("x", str(x + 107))
+        diamond_geometry.set("y", str(y - 25))
+        diamond_geometry.set("width", "14")
+        diamond_geometry.set("height", "14")
+        diamond_geometry.set("as", "geometry")
 
     def save_scenario(self):
         """Save loaded scenario back to its current file."""

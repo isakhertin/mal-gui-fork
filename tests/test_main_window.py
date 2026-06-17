@@ -1,4 +1,5 @@
 import pytest
+import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QToolBar, QMessageBox
@@ -548,6 +549,44 @@ def test_asset_factory_does_not_mark_assets_without_detectors(main_window):
     )
 
     assert credentials_asset.has_detector is False
+
+
+def test_drawio_export_includes_detector_markers(tmp_path, main_window):
+    main_window.detector_index = DetectorIndex(asset_types={"Application"})
+    main_window.asset_factory.detector_index = main_window.detector_index
+    asset_item = main_window.scene.create_asset(
+        "Application", QPointF(80, 80), name="AppWithDetector"
+    )
+
+    drawio_path = tmp_path / "detectors.drawio"
+    drawio_path.write_text(
+        """<?xml version="1.0" ?>
+<mxfile>
+  <diagram>
+    <mxGraphModel>
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="2" parent="0"/>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+""",
+        encoding="utf-8",
+    )
+
+    main_window.add_positions_to_model()
+    main_window._add_detectors_to_drawio_file(str(drawio_path))
+
+    root = ET.parse(drawio_path).getroot()
+    cells_by_id = {
+        cell.get("id"): cell for cell in root.findall(".//mxCell") if cell.get("id")
+    }
+    assert f"detector_{asset_item.asset.id}_stem" in cells_by_id
+    assert f"detector_{asset_item.asset.id}_diamond" in cells_by_id
+    assert cells_by_id[f"detector_{asset_item.asset.id}_stem"].get("parent") == "1"
+    assert cells_by_id[f"detector_{asset_item.asset.id}_diamond"].get("parent") == "1"
 
 
 # -------------------------------------------------------------------
