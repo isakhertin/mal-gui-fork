@@ -24,6 +24,10 @@ def resolve_policy(policy_name: str | None):
 
 
 class AttackerItem(ItemBase):
+    TITLE = "Attacker"
+    HEADER_COLOR = (255, 0, 0)
+    ITEM_KIND = "attacker"
+
     # Starting Sequence Id with normal start at 100 (randomly taken)
 
     def __init__(
@@ -49,12 +53,11 @@ class AttackerItem(ItemBase):
         self.timer.timeout.connect(self.update_status_color)
         self.timer.start(500)
 
-        super().__init__("Attacker", image_path, parent)
+        super().__init__(self.TITLE, image_path, parent)
 
     def update_type_text_item_position(self):
         super().update_type_text_item_position()
-        # For Attacker make the background of type As Red
-        self.asset_type_background_color = QColor(255, 0, 0)  # Red
+        self.asset_type_background_color = QColor(*self.HEADER_COLOR)
 
     def update_name(self):
         """Update the name of the attacker"""
@@ -112,6 +115,6 @@ class AttackerItem(ItemBase):
         return {
             "title": self.title,
             "image_path": self.image_path,
-            "type": "asset",
+            "type": self.ITEM_KIND,
             "object": self.entry_points,
         }
