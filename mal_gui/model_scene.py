@@ -582,6 +582,8 @@ class ModelScene(QGraphicsScene):
         # Draw attackers if they exists in scenario
         if self.scenario:
             agents = self.scenario.agent_settings
+            if isinstance(agents, dict):
+                agents = agents.values()
             for agent_setting in agents:
                 if isinstance(agent_setting, AttackerSettings):
                     if isinstance(agent_setting.entry_points, (tuple)):

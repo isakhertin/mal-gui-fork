@@ -145,6 +145,38 @@ def test_load_model_recreates_scene(tmp_path, app, lang_file_path):
     assert window.scenario_file_name is None
 
 
+def test_load_scenario_uses_current_language_when_lang_file_points_to_scenario(
+    tmp_path, app, lang_file_path
+):
+    import yaml
+
+    window = MainWindow(app, lang_file_path)
+    scenario_path = tmp_path / "self-referential-scenario.yml"
+    scenario_yaml = {
+        "lang_file": str(scenario_path),
+        "agents": {},
+        "model": {
+            "metadata": {
+                "name": "SelfReferentialScenario",
+                "langVersion": "1.0.0",
+                "langID": "org.mal-lang.coreLang",
+                "malVersion": "0.1.0-SNAPSHOT",
+                "MAL-Toolbox Version": "2.8.1",
+                "info": "Test model",
+            },
+            "assets": {},
+        },
+    }
+    scenario_path.write_text(yaml.safe_dump(scenario_yaml), encoding="utf-8")
+
+    window.load_scenario(str(scenario_path))
+
+    assert window.lang_file_path == lang_file_path
+    assert window._lang_file == lang_file_path
+    assert window.scene.model.name == "SelfReferentialScenario"
+    assert window.scenario_file_name == str(scenario_path)
+
+
 def test_load_scene_restores_attacker_policy_from_scenario(app, lang_file_path):
     window = MainWindow(app, lang_file_path)
 
