@@ -1,3 +1,4 @@
+import inspect
 from pathlib import Path
 from typing import Optional
 import xml.etree.ElementTree as ET
@@ -171,7 +172,7 @@ class MainWindow(QMainWindow):
         # name as key and class as value
         asset_factory = AssetFactory(detector_index=self.detector_index)
         asset_factory.register_asset("Attacker", image_path("attacker.png"))
-        asset_factory.register_asset("Meta Detector", image_path("attacker.png"))
+        asset_factory.register_asset("Meta Detector", image_path("metadetector.png"))
 
         for asset in lang_graph.assets.values():
             if not asset.is_abstract:
@@ -731,14 +732,83 @@ class MainWindow(QMainWindow):
         self._loaded_meta_detector_data = self._load_meta_detectors_from_model_file(
             file_path
         )
-        scenario = Scenario.load_from_file(file_path)
+        scenario, lang_file_path = self._load_scenario_from_file(file_path)
         # Reload in case language was changed
-        self.load_scene(scenario._lang_file, scenario.model, scenario)
+        self.load_scene(lang_file_path, scenario.model, scenario)
         self.model_file_name = None
         self.scenario_file_name = file_path
-        with open(file_path, "r", encoding="utf-8") as file_obj:
-            self._lang_file = yaml.safe_load(file_obj)["lang_file"]
+        self._lang_file = lang_file_path
         self.update_scenario_save_action_state()
+
+    def _load_scenario_from_file(self, file_path: str):
+        with open(file_path, "r", encoding="utf-8") as file_obj:
+            scenario_dict = yaml.safe_load(file_obj) or {}
+
+        lang_file_path = self._resolve_scenario_lang_file(
+            file_path, scenario_dict.get("lang_file")
+        )
+        scenario_dict["lang_file"] = lang_file_path
+        return Scenario.from_dict(scenario_dict), lang_file_path
+
+    def _resolve_scenario_lang_file(
+        self, scenario_file_path: str, scenario_lang_file: str | None
+    ) -> str:
+        if not scenario_lang_file:
+            return self.lang_file_path
+
+        scenario_path = Path(scenario_file_path).resolve()
+        lang_path = Path(scenario_lang_file)
+        if not lang_path.is_absolute():
+            lang_path = scenario_path.parent / lang_path
+        lang_path = lang_path.resolve()
+
+        if lang_path == scenario_path:
+            return self.lang_file_path
+
+        try:
+            LanguageGraph.load_from_file(str(lang_path))
+        except Exception:
+            return self.lang_file_path
+        return str(lang_path)
+
+    def _scenario_agent_settings_by_type(self):
+        if not self.scene.scenario:
+            return {}, {}
+
+        if hasattr(self.scene.scenario, "attacker_settings") and hasattr(
+            self.scene.scenario, "defender_settings"
+        ):
+            return (
+                self.scene.scenario.attacker_settings,
+                self.scene.scenario.defender_settings,
+            )
+
+        agent_settings = getattr(self.scene.scenario, "agent_settings", {})
+        if not isinstance(agent_settings, dict):
+            return {}, {}
+
+        attacker_agents = {
+            name: agent
+            for name, agent in agent_settings.items()
+            if isinstance(agent, AttackerSettings)
+        }
+        defender_agents = {
+            name: agent
+            for name, agent in agent_settings.items()
+            if isinstance(agent, DefenderSettings)
+        }
+        return attacker_agents, defender_agents
+
+    def _create_scenario(self, agents):
+        scenario_args = {
+            "lang_file": self.lang_file_path,
+            "model": self.scene.model,
+        }
+        if "agents" in inspect.signature(Scenario).parameters:
+            scenario_args["agents"] = tuple(agents)
+        else:
+            scenario_args["agent_settings"] = {agent.name: agent for agent in agents}
+        return Scenario(**scenario_args)
 
     def load_model(self, file_path: str):
         """Load a MAL model from a file"""
@@ -1075,14 +1145,11 @@ class MainWindow(QMainWindow):
 
     def _save_scenario_to_file(self, file_path: str):
         """Save scenario data to the provided path."""
-        prev_attacker_agents = (
-            self.scene.scenario.attacker_settings if self.scene.scenario else dict()
-        )
-        prev_defender_agents = (
-            self.scene.scenario.defender_settings if self.scene.scenario else dict()
+        prev_attacker_agents, prev_defender_agents = (
+            self._scenario_agent_settings_by_type()
         )
         # Start with existing defender agents, as they are not editable in the GUI
-        new_agents: list[AttackerSettings[str] | DefenderSettings] = list(
+        new_agents: list[AttackerSettings | DefenderSettings] = list(
             prev_defender_agents.values()
         )
 
@@ -1116,11 +1183,7 @@ class MainWindow(QMainWindow):
         self.add_positions_to_model()
 
         try:
-            scenario = Scenario(
-                lang_file=self.lang_file_path,
-                model=self.scene.model,
-                agents=tuple(new_agents),
-            )
+            scenario = self._create_scenario(new_agents)
             scenario.save_to_file(file_path)
             self._write_meta_detectors_to_model_file(file_path)
 
