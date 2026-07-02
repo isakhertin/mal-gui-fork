@@ -1,4 +1,5 @@
 import inspect
+from os import fspath
 from pathlib import Path
 from typing import Optional
 import xml.etree.ElementTree as ET
@@ -58,6 +59,10 @@ from .docked_windows import (
 PACKAGE_DIR = Path(__file__).resolve().parent
 
 
+def _path_to_str(file_path) -> str:
+    return fspath(file_path)
+
+
 class DraggableListWidget(QListWidget):
     def mousePressEvent(self, event):
         if event.buttons() == Qt.LeftButton:
@@ -86,10 +91,10 @@ class MainWindow(QMainWindow):
         self.scenario_file_name = None
         self.model_file_name = None
 
-        self.lang_file_path = lang_file_path
+        self.lang_file_path = _path_to_str(lang_file_path)
         self._loaded_meta_detector_data: list[dict] = []
-        lang_graph = LanguageGraph.load_from_file(lang_file_path)
-        self.detector_index = load_detector_index(lang_file_path)
+        lang_graph = LanguageGraph.load_from_file(self.lang_file_path)
+        self.detector_index = load_detector_index(self.lang_file_path)
         self.asset_factory = self.create_asset_factory(lang_graph)
         self.scene = self.create_scene(
             lang_graph,
@@ -126,6 +131,7 @@ class MainWindow(QMainWindow):
     ):
         """Load scene with given language and model"""
         print("LOADING SCENE!")
+        lang_file_path = _path_to_str(lang_file_path)
         lang_graph = LanguageGraph.load_from_file(lang_file_path)
         self.clear_window()
         self.lang_file_path = lang_file_path
@@ -718,6 +724,7 @@ class MainWindow(QMainWindow):
 
     def load_empty_project(self, lang_file_path: str):
         """Reload the MAL language and reset the window to an empty project."""
+        lang_file_path = _path_to_str(lang_file_path)
         lang_graph = LanguageGraph.load_from_file(lang_file_path)
         self._loaded_meta_detector_data = []
         self.load_scene(lang_file_path, Model("New Model", lang_graph))
@@ -729,6 +736,7 @@ class MainWindow(QMainWindow):
 
     def load_scenario(self, file_path: str):
         """Load model and agents from a scenario"""
+        file_path = _path_to_str(file_path)
         self._loaded_meta_detector_data = self._load_meta_detectors_from_model_file(
             file_path
         )
@@ -741,6 +749,7 @@ class MainWindow(QMainWindow):
         self.update_scenario_save_action_state()
 
     def _load_scenario_from_file(self, file_path: str):
+        file_path = _path_to_str(file_path)
         with open(file_path, "r", encoding="utf-8") as file_obj:
             scenario_dict = yaml.safe_load(file_obj) or {}
 
@@ -753,6 +762,7 @@ class MainWindow(QMainWindow):
     def _resolve_scenario_lang_file(
         self, scenario_file_path: str, scenario_lang_file: str | None
     ) -> str:
+        scenario_file_path = _path_to_str(scenario_file_path)
         if not scenario_lang_file:
             return self.lang_file_path
 
@@ -812,6 +822,7 @@ class MainWindow(QMainWindow):
 
     def load_model(self, file_path: str):
         """Load a MAL model from a file"""
+        file_path = _path_to_str(file_path)
         self._loaded_meta_detector_data = self._load_meta_detectors_from_model_file(
             file_path
         )
@@ -929,6 +940,10 @@ class MainWindow(QMainWindow):
         anchor_asset.extras = extras_dict
 
     def _write_meta_detectors_to_model_file(self, file_path: str):
+        file_path = _path_to_str(file_path)
+        if not Path(file_path).exists():
+            return
+
         with open(file_path, "r", encoding="utf-8") as file_obj:
             model_dict = yaml.safe_load(file_obj) or {}
         model_section = dict(model_dict.get("model") or {})
@@ -948,6 +963,7 @@ class MainWindow(QMainWindow):
             yaml.safe_dump(model_dict, file_obj, sort_keys=False)
 
     def _load_meta_detectors_from_model_file(self, file_path: str) -> list[dict]:
+        file_path = _path_to_str(file_path)
         with open(file_path, "r", encoding="utf-8") as file_obj:
             model_dict = yaml.safe_load(file_obj) or {}
         model_section = model_dict.get("model") or {}
@@ -986,9 +1002,10 @@ class MainWindow(QMainWindow):
     def save_model(self):
         """Save to file if filename set, else save as new file"""
         if self.model_file_name:
+            file_path = _path_to_str(self.model_file_name)
             self.add_positions_to_model()
-            self.scene.model.save_to_file(self.model_file_name)
-            self._write_meta_detectors_to_model_file(self.model_file_name)
+            self.scene.model.save_to_file(file_path)
+            self._write_meta_detectors_to_model_file(file_path)
         else:
             self.save_as_model()
 
@@ -1007,6 +1024,7 @@ class MainWindow(QMainWindow):
             self.scene.model.name = Path(file_path).stem
             self.model_file_name = file_path
             try:
+                file_path = _path_to_str(file_path)
                 self.scene.model.save_to_file(file_path)
                 self._write_meta_detectors_to_model_file(file_path)
             except Exception as e:
@@ -1063,6 +1081,7 @@ class MainWindow(QMainWindow):
         self, file_path: str, coordinate_scale: float = 0.75
     ):
         """Append detector markers to a draw.io file exported by maltoolbox."""
+        file_path = _path_to_str(file_path)
         tree = ET.parse(file_path)
         root = tree.getroot()
         root_cell = root.find("./diagram/mxGraphModel/root")
@@ -1145,6 +1164,7 @@ class MainWindow(QMainWindow):
 
     def _save_scenario_to_file(self, file_path: str):
         """Save scenario data to the provided path."""
+        file_path = _path_to_str(file_path)
         prev_attacker_agents, prev_defender_agents = (
             self._scenario_agent_settings_by_type()
         )

@@ -134,7 +134,7 @@ def test_load_model_recreates_scene(tmp_path, app, lang_file_path):
     lang_graph = LanguageGraph.load_from_file(lang_file_path)
     model = Model("SavedModel", lang_graph)
     model_path = tmp_path / "saved-model.yml"
-    model.save_to_file(model_path)
+    model.save_to_file(str(model_path))
 
     old_scene = window.scene
     window.load_model(str(model_path))
@@ -212,7 +212,7 @@ def test_quick_load_current_file_reloads_model(tmp_path, monkeypatch, app, lang_
     lang_graph = LanguageGraph.load_from_file(lang_file_path)
     model = Model("ReloadTarget", lang_graph)
     model_path = tmp_path / "reload-model.yml"
-    model.save_to_file(model_path)
+    model.save_to_file(str(model_path))
     window.load_model(str(model_path))
 
     reloaded_scene = window.scene
@@ -278,7 +278,7 @@ def test_load_model_restores_meta_detector_from_model_metadata(
     asset = model.add_asset("Application", name="App1")
     asset.extras = {"position": {"x": 0, "y": 0}}
     model_path = tmp_path / "meta-detector-model.yml"
-    model.save_to_file(model_path)
+    model.save_to_file(str(model_path))
 
     model_yaml = yaml.safe_load(model_path.read_text())
     model_yaml["model"] = {
@@ -316,7 +316,7 @@ def test_save_model_preserves_all_loaded_meta_detector_connections(
     app2 = model.add_asset("Application", name="App2")
     app2.extras = {"position": {"x": 100, "y": 0}}
     model_path = tmp_path / "meta-detector-connections.yml"
-    model.save_to_file(model_path)
+    model.save_to_file(str(model_path))
 
     model_yaml = yaml.safe_load(model_path.read_text())
     model_yaml["model"] = {
@@ -391,7 +391,7 @@ def test_load_model_restores_meta_detector_connection_label(
     asset = model.add_asset("Application", name="App1")
     asset.extras = {"position": {"x": 0, "y": 0}}
     model_path = tmp_path / "meta-detector-label.yml"
-    model.save_to_file(model_path)
+    model.save_to_file(str(model_path))
 
     model_yaml = yaml.safe_load(model_path.read_text())
     model_yaml["model"] = {
