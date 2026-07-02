@@ -13,6 +13,10 @@ class DetectorIndex:
         return asset_type_name in self.asset_types
 
 
+# Detector syntax support is related to the thesis detector language work:
+# https://github.com/isakhertin/MasterThesis_DetectorsLang
+
+
 _ASSET_DECLARATION_RE = re.compile(r"^\s*(?:abstract\s+)?asset\s+([A-Za-z_]\w*)\b")
 _DETECTOR_RE = re.compile(r"!\s*[A-Za-z_]\w*\s*\(")
 
