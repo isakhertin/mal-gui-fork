@@ -582,17 +582,33 @@ class ModelScene(QGraphicsScene):
         # Draw attackers if they exists in scenario
         if self.scenario:
             agents = self.scenario.agent_settings
-            for name, agent_info in agents.items():
-                if isinstance(agent_info, AttackerSettings):
+            if isinstance(agents, dict):
+                agents = agents.values()
+            for agent_setting in agents:
+                if isinstance(agent_setting, AttackerSettings):
+                    if isinstance(agent_setting.entry_points, (tuple)):
+                        raise TypeError(
+                            "Expected entry_points to be a list or set, got a tuple"
+                        )
                     attacker_item = self.create_attacker(
                         QPointF(0, 0),
-                        name,
-                        entry_points=agent_info.entry_points,
-                        goals=agent_info.goals,
-                        policy=agent_info.policy,
+                        agent_setting.name,
+                        entry_points={
+                            entry_point
+                            if isinstance(entry_point, str)
+                            else entry_point.full_name
+                            for entry_point in agent_setting.entry_points
+                        },
+                        goals={
+                            goal if isinstance(goal, str) else goal.full_name
+                            for goal in agent_setting.goals
+                        },
+                        policy=agent_setting.policy,
                     )
                     self._draw_attacker_connections(
-                        attacker_item, agent_info.entry_points, agent_info.goals
+                        attacker_item,
+                        agent_setting.entry_points,
+                        agent_setting.goals,
                     )
         for attacker_info in self._get_model_attacker_metadata():
             kind = attacker_info.get("kind", "attacker")

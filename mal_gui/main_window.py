@@ -1,3 +1,4 @@
+import inspect
 from pathlib import Path
 from typing import Optional
 import xml.etree.ElementTree as ET
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDrag, QAction, QIcon, QIntValidator
 from PySide6.QtCore import Qt, QMimeData, QByteArray, QSize, Signal, QPointF
 
+from malsim import DefenderSettings
 from qt_material import apply_stylesheet, list_themes
 
 from maltoolbox import __version__ as maltoolbox_version
@@ -170,7 +172,7 @@ class MainWindow(QMainWindow):
         # name as key and class as value
         asset_factory = AssetFactory(detector_index=self.detector_index)
         asset_factory.register_asset("Attacker", image_path("attacker.png"))
-        asset_factory.register_asset("Meta Detector", image_path("attacker.png"))
+        asset_factory.register_asset("Meta Detector", image_path("metadetector.png"))
 
         for asset in lang_graph.assets.values():
             if not asset.is_abstract:
@@ -730,14 +732,83 @@ class MainWindow(QMainWindow):
         self._loaded_meta_detector_data = self._load_meta_detectors_from_model_file(
             file_path
         )
-        scenario = Scenario.load_from_file(file_path)
+        scenario, lang_file_path = self._load_scenario_from_file(file_path)
         # Reload in case language was changed
-        self.load_scene(scenario._lang_file, scenario.model, scenario)
+        self.load_scene(lang_file_path, scenario.model, scenario)
         self.model_file_name = None
         self.scenario_file_name = file_path
-        with open(file_path, "r", encoding="utf-8") as file_obj:
-            self._lang_file = yaml.safe_load(file_obj)["lang_file"]
+        self._lang_file = lang_file_path
         self.update_scenario_save_action_state()
+
+    def _load_scenario_from_file(self, file_path: str):
+        with open(file_path, "r", encoding="utf-8") as file_obj:
+            scenario_dict = yaml.safe_load(file_obj) or {}
+
+        lang_file_path = self._resolve_scenario_lang_file(
+            file_path, scenario_dict.get("lang_file")
+        )
+        scenario_dict["lang_file"] = lang_file_path
+        return Scenario.from_dict(scenario_dict), lang_file_path
+
+    def _resolve_scenario_lang_file(
+        self, scenario_file_path: str, scenario_lang_file: str | None
+    ) -> str:
+        if not scenario_lang_file:
+            return self.lang_file_path
+
+        scenario_path = Path(scenario_file_path).resolve()
+        lang_path = Path(scenario_lang_file)
+        if not lang_path.is_absolute():
+            lang_path = scenario_path.parent / lang_path
+        lang_path = lang_path.resolve()
+
+        if lang_path == scenario_path:
+            return self.lang_file_path
+
+        try:
+            LanguageGraph.load_from_file(str(lang_path))
+        except Exception:
+            return self.lang_file_path
+        return str(lang_path)
+
+    def _scenario_agent_settings_by_type(self):
+        if not self.scene.scenario:
+            return {}, {}
+
+        if hasattr(self.scene.scenario, "attacker_settings") and hasattr(
+            self.scene.scenario, "defender_settings"
+        ):
+            return (
+                self.scene.scenario.attacker_settings,
+                self.scene.scenario.defender_settings,
+            )
+
+        agent_settings = getattr(self.scene.scenario, "agent_settings", {})
+        if not isinstance(agent_settings, dict):
+            return {}, {}
+
+        attacker_agents = {
+            name: agent
+            for name, agent in agent_settings.items()
+            if isinstance(agent, AttackerSettings)
+        }
+        defender_agents = {
+            name: agent
+            for name, agent in agent_settings.items()
+            if isinstance(agent, DefenderSettings)
+        }
+        return attacker_agents, defender_agents
+
+    def _create_scenario(self, agents):
+        scenario_args = {
+            "lang_file": self.lang_file_path,
+            "model": self.scene.model,
+        }
+        if "agents" in inspect.signature(Scenario).parameters:
+            scenario_args["agents"] = tuple(agents)
+        else:
+            scenario_args["agent_settings"] = {agent.name: agent for agent in agents}
+        return Scenario(**scenario_args)
 
     def load_model(self, file_path: str):
         """Load a MAL model from a file"""
@@ -1074,76 +1145,56 @@ class MainWindow(QMainWindow):
 
     def _save_scenario_to_file(self, file_path: str):
         """Save scenario data to the provided path."""
-        agents = self.scene.scenario.agent_settings if self.scene.scenario else {}
+        prev_attacker_agents, prev_defender_agents = (
+            self._scenario_agent_settings_by_type()
+        )
+        # Start with existing defender agents, as they are not editable in the GUI
+        new_agents: list[AttackerSettings | DefenderSettings] = list(
+            prev_defender_agents.values()
+        )
+
         # Add attacker agents from scene
         for attacker_item in self.scene.attacker_items:
             if getattr(attacker_item, "ITEM_KIND", "attacker") != "attacker":
                 continue
-            agent = agents.get(attacker_item.name)
-            # Only thing that can be changed by GUI for agents is entry points
-            if isinstance(agent, AttackerSettings):
+
+            prev_agent = prev_attacker_agents.get(attacker_item.name)
+
+            if prev_agent:
                 # If agent already exists in scenario, update entrypoints
-                agent.entry_points = set(attacker_item.entry_points)
-                agent.goals = set(attacker_item.goals)
-                agent.policy = attacker_item.policy
+                agent = AttackerSettings(
+                    name=prev_agent.name,
+                    entry_points=set(attacker_item.entry_points),
+                    goals=set(attacker_item.goals),
+                    type=AgentType.ATTACKER,
+                    policy=attacker_item.policy,
+                )
             else:
-                # Otherwise, add new agent to scenario agents dict
-                agents[attacker_item.name] = AttackerSettings(
+                # Otherwise, add new agent to scenario agents tuple
+                agent = AttackerSettings(
                     name=attacker_item.name,
                     entry_points=set(attacker_item.entry_points),
                     goals=set(attacker_item.goals),
                     type=AgentType.ATTACKER,
                     policy=attacker_item.policy,
                 )
+            new_agents.append(agent)
 
-        else:
-            self.add_positions_to_model()
-            # Create a new scenario based on settings in gui and save it to file
-            # TODO: this is a hacky solution, instead malsim scenario should be easier to work with
-            rewards = None
-            false_negative_rates = None
-            false_positive_rates = None
-            is_actionable = None
-            is_observable = None
+        self.add_positions_to_model()
 
-            if self.scene.scenario:
-                if self.scene.scenario.rewards:
-                    rewards = self.scene.scenario.rewards.to_dict()
-                if self.scene.scenario.false_negative_rates:
-                    false_negative_rates = (
-                        self.scene.scenario.false_negative_rates.to_dict()
-                    )
-                if self.scene.scenario.false_positive_rates:
-                    false_positive_rates = (
-                        self.scene.scenario.false_positive_rates.to_dict()
-                    )
-                if self.scene.scenario.is_actionable:
-                    is_actionable = self.scene.scenario.is_actionable.to_dict()
-                if self.scene.scenario.is_observable:
-                    is_observable = self.scene.scenario.is_observable.to_dict()
+        try:
+            scenario = self._create_scenario(new_agents)
+            scenario.save_to_file(file_path)
+            self._write_meta_detectors_to_model_file(file_path)
 
-            try:
-                scenario = Scenario(
-                    lang_file=self.lang_file_path,
-                    model=self.scene.model,
-                    agent_settings=agents,
-                    rewards=rewards,
-                    false_negative_rates=false_negative_rates,
-                    false_positive_rates=false_positive_rates,
-                    actionable_steps=is_actionable,
-                    observable_steps=is_observable,
-                )
-                scenario.save_to_file(file_path)
-                self._write_meta_detectors_to_model_file(file_path)
-
-                if hasattr(self, "_lang_file"):
-                    with open(file_path, "r", encoding="utf-8") as file_obj:
-                        scenario_dict = yaml.safe_load(file_obj)
-                    scenario_dict["lang_file"] = self._lang_file
-                    with open(file_path, "w", encoding="utf-8") as file_obj:
-                        yaml.safe_dump(scenario_dict, file_obj, sort_keys=False)
-            except Exception as e:
-                self.show_error_popup("Could not save scenario: " + str(e))
+            if hasattr(self, "_lang_file"):
+                with open(file_path, "r", encoding="utf-8") as file_obj:
+                    scenario_dict = yaml.safe_load(file_obj)
+                scenario_dict["lang_file"] = self._lang_file
+                with open(file_path, "w", encoding="utf-8") as file_obj:
+                    yaml.safe_dump(scenario_dict, file_obj, sort_keys=False)
+        except Exception as e:
+            self.show_error_popup("Could not save scenario: " + str(e))
 
     def quitApp(self):
         print("Quit")
